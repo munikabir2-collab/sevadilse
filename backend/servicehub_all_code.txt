@@ -1,0 +1,1172 @@
+﻿
+
+==================== F:\sevadilse\backend\app\api\auth.py ====================
+
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session
+from passlib.context import CryptContext
+
+from app.core.database import get_db
+from app.models.user_model import User
+from app.schemas.user_schema import UserCreate, UserOut
+
+router = APIRouter(prefix="/auth", tags=["Auth"])
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+
+@router.post("/signup", response_model=UserOut)
+def signup(user: UserCreate, db: Session = Depends(get_db)):
+    existing = db.query(User).filter(User.email == user.email).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="Email pehle se registered hai")
+
+    new_user = User(
+        name=user.name,
+        email=user.email,
+        hashed_password=pwd_context.hash(user.password),
+        phone=user.phone,
+        is_provider=user.is_provider,
+    )
+    db.add(new_user)
+    db.commit()
+    db.refresh(new_user)
+    return new_user
+
+# TODO: /login endpoint with JWT token generation
+
+
+
+==================== F:\sevadilse\backend\app\api\bookings.py ====================
+
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session
+
+from app.core.database import get_db
+from app.models.booking_model import Booking, BookingStatus
+from app.models.service_model import Service
+from app.schemas.booking_schema import BookingCreate, BookingOut
+from app.services.availability_service import is_available
+
+router = APIRouter(prefix="/bookings", tags=["Bookings"])
+
+
+@router.post("/", response_model=BookingOut)
+def create_booking(booking: BookingCreate, db: Session = Depends(get_db)):
+    service = db.query(Service).filter(Service.id == booking.service_id).first()
+    if not service:
+        raise HTTPException(status_code=404, detail="Service nahi mila")
+
+    if booking.end_time <= booking.start_time:
+        raise HTTPException(status_code=400, detail="end_time, start_time ke baad honi chahiye")
+
+    if not is_available(db, booking.service_id, booking.start_time, booking.end_time):
+        raise HTTPException(
+            status_code=409,
+            detail="Is time slot ke liye availability nahi hai",
+        )
+
+    # Simple pricing: hotel jaise duration-based ho to price * nights/hours nikaal sakte ho,
+    # abhi ke liye flat service price use kar rahe hain
+    db_booking = Booking(
+        user_id=booking.user_id,
+        provider_id=service.provider_id,
+        service_id=booking.service_id,
+        start_time=booking.start_time,
+        end_time=booking.end_time,
+        guests=booking.guests,
+        total_price=service.price,
+        status=BookingStatus.confirmed,
+    )
+    db.add(db_booking)
+    db.commit()
+    db.refresh(db_booking)
+    return db_booking
+
+
+@router.get("/user/{user_id}", response_model=list[BookingOut])
+def list_user_bookings(user_id: int, db: Session = Depends(get_db)):
+    return (
+        db.query(Booking)
+        .filter(Booking.user_id == user_id)
+        .order_by(Booking.start_time.desc())
+        .all()
+    )
+
+
+@router.patch("/{booking_id}/cancel", response_model=BookingOut)
+def cancel_booking(booking_id: int, db: Session = Depends(get_db)):
+    booking = db.query(Booking).filter(Booking.id == booking_id).first()
+    if not booking:
+        raise HTTPException(status_code=404, detail="Booking nahi mili")
+
+    booking.status = BookingStatus.cancelled
+    db.commit()
+    db.refresh(booking)
+    return booking
+
+
+
+==================== F:\sevadilse\backend\app\api\providers.py ====================
+
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy.orm import Session
+
+from app.core.database import get_db
+from app.models.provider_model import Provider, ProviderCategory
+from app.models.service_model import Service
+from app.schemas.provider_schema import (
+    ProviderCreate,
+    ProviderOut,
+    ProviderDetailOut,
+    ServiceCreate,
+    ServiceOut,
+)
+
+router = APIRouter(prefix="/providers", tags=["Providers"])
+
+
+@router.post("/", response_model=ProviderOut)
+def create_provider(
+    provider: ProviderCreate, owner_id: int, db: Session = Depends(get_db)
+):
+    # owner_id abhi query param hai â€” /auth/login (JWT) bante hi token se milega
+    db_provider = Provider(owner_id=owner_id, **provider.model_dump())
+    db.add(db_provider)
+    db.commit()
+    db.refresh(db_provider)
+    return db_provider
+
+
+@router.get("/", response_model=list[ProviderOut])
+def list_providers(
+    category: ProviderCategory | None = None,
+    city: str | None = None,
+    search: str | None = Query(None, description="Naam me search karo"),
+    owner_id: int | None = Query(None, description="Sirf is owner ki listings"),
+    db: Session = Depends(get_db),
+):
+    query = db.query(Provider)
+    if category:
+        query = query.filter(Provider.category == category)
+    if city:
+        query = query.filter(Provider.city.ilike(f"%{city}%"))
+    if search:
+        query = query.filter(Provider.name.ilike(f"%{search}%"))
+    if owner_id:
+        query = query.filter(Provider.owner_id == owner_id)
+    return query.order_by(Provider.avg_rating.desc()).all()
+
+
+@router.get("/{provider_id}", response_model=ProviderDetailOut)
+def get_provider(provider_id: int, db: Session = Depends(get_db)):
+    provider = db.query(Provider).filter(Provider.id == provider_id).first()
+    if not provider:
+        raise HTTPException(status_code=404, detail="Provider nahi mila")
+    return provider
+
+
+@router.post("/{provider_id}/services", response_model=ServiceOut)
+def add_service(
+    provider_id: int, service: ServiceCreate, db: Session = Depends(get_db)
+):
+    provider = db.query(Provider).filter(Provider.id == provider_id).first()
+    if not provider:
+        raise HTTPException(status_code=404, detail="Provider nahi mila")
+
+    db_service = Service(provider_id=provider_id, **service.model_dump())
+    db.add(db_service)
+    db.commit()
+    db.refresh(db_service)
+    return db_service
+
+
+
+==================== F:\sevadilse\backend\app\api\restaurant_tables.py ====================
+
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session
+
+from app.core.database import get_db
+from app.models.provider_model import Provider, ProviderCategory
+from app.models.restaurant_table_model import RestaurantTable, TableStatus
+from app.schemas.restaurant_table_schema import (
+    RestaurantTableCreate,
+    RestaurantTableUpdate,
+    RestaurantTableOut,
+)
+
+router = APIRouter(
+    prefix="/restaurants",
+    tags=["Restaurant Tables"],
+)
+
+
+@router.post(
+    "/{provider_id}/tables",
+    response_model=RestaurantTableOut,
+)
+def create_table(
+    provider_id: int,
+    table: RestaurantTableCreate,
+    db: Session = Depends(get_db),
+):
+    provider = (
+        db.query(Provider)
+        .filter(Provider.id == provider_id)
+        .first()
+    )
+
+    if not provider:
+        raise HTTPException(
+            status_code=404,
+            detail="Restaurant provider nahi mila",
+        )
+
+    if provider.category != ProviderCategory.restaurant:
+        raise HTTPException(
+            status_code=400,
+            detail="Ye provider restaurant nahi hai",
+        )
+
+    if table.capacity < 1:
+        raise HTTPException(
+            status_code=400,
+            detail="Table capacity kam se kam 1 honi chahiye",
+        )
+
+    existing = (
+        db.query(RestaurantTable)
+        .filter(
+            RestaurantTable.provider_id == provider_id,
+            RestaurantTable.table_number == table.table_number,
+        )
+        .first()
+    )
+
+    if existing:
+        raise HTTPException(
+            status_code=409,
+            detail="Ye table number pehle se exist karta hai",
+        )
+
+    db_table = RestaurantTable(
+        provider_id=provider_id,
+        table_number=table.table_number,
+        capacity=table.capacity,
+        description=table.description,
+        status=TableStatus.available,
+    )
+
+    db.add(db_table)
+    db.commit()
+    db.refresh(db_table)
+
+    return db_table
+
+
+@router.get(
+    "/{provider_id}/tables",
+    response_model=list[RestaurantTableOut],
+)
+def list_tables(
+    provider_id: int,
+    status: TableStatus | None = None,
+    db: Session = Depends(get_db),
+):
+    provider = (
+        db.query(Provider)
+        .filter(Provider.id == provider_id)
+        .first()
+    )
+
+    if not provider:
+        raise HTTPException(
+            status_code=404,
+            detail="Restaurant provider nahi mila",
+        )
+
+    query = db.query(RestaurantTable).filter(
+        RestaurantTable.provider_id == provider_id
+    )
+
+    if status:
+        query = query.filter(
+            RestaurantTable.status == status
+        )
+
+    return query.order_by(RestaurantTable.table_number).all()
+
+
+@router.get(
+    "/tables/{table_id}",
+    response_model=RestaurantTableOut,
+)
+def get_table(
+    table_id: int,
+    db: Session = Depends(get_db),
+):
+    table = (
+        db.query(RestaurantTable)
+        .filter(RestaurantTable.id == table_id)
+        .first()
+    )
+
+    if not table:
+        raise HTTPException(
+            status_code=404,
+            detail="Table nahi mili",
+        )
+
+    return table
+
+
+@router.patch(
+    "/tables/{table_id}",
+    response_model=RestaurantTableOut,
+)
+def update_table(
+    table_id: int,
+    data: RestaurantTableUpdate,
+    db: Session = Depends(get_db),
+):
+    table = (
+        db.query(RestaurantTable)
+        .filter(RestaurantTable.id == table_id)
+        .first()
+    )
+
+    if not table:
+        raise HTTPException(
+            status_code=404,
+            detail="Table nahi mili",
+        )
+
+    updates = data.model_dump(exclude_unset=True)
+
+    if "capacity" in updates and updates["capacity"] < 1:
+        raise HTTPException(
+            status_code=400,
+            detail="Table capacity kam se kam 1 honi chahiye",
+        )
+
+    if "table_number" in updates:
+        existing = (
+            db.query(RestaurantTable)
+            .filter(
+                RestaurantTable.provider_id == table.provider_id,
+                RestaurantTable.table_number == updates["table_number"],
+                RestaurantTable.id != table_id,
+            )
+            .first()
+        )
+
+        if existing:
+            raise HTTPException(
+                status_code=409,
+                detail="Ye table number pehle se exist karta hai",
+            )
+
+    for key, value in updates.items():
+        setattr(table, key, value)
+
+    db.commit()
+    db.refresh(table)
+
+    return table
+
+
+@router.delete(
+    "/tables/{table_id}",
+)
+def delete_table(
+    table_id: int,
+    db: Session = Depends(get_db),
+):
+    table = (
+        db.query(RestaurantTable)
+        .filter(RestaurantTable.id == table_id)
+        .first()
+    )
+
+    if not table:
+        raise HTTPException(
+            status_code=404,
+            detail="Table nahi mili",
+        )
+
+    db.delete(table)
+    db.commit()
+
+    return {
+        "message": "Restaurant table delete ho gayi",
+        "table_id": table_id,
+    }
+
+
+
+==================== F:\sevadilse\backend\app\api\reviews.py ====================
+
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session
+
+from app.core.database import get_db
+from app.models.booking_model import Booking, BookingStatus
+from app.models.review_model import Review
+from app.models.provider_model import Provider
+from app.schemas.review_schema import ReviewCreate, ReviewOut
+
+router = APIRouter(prefix="/reviews", tags=["Reviews"])
+
+
+@router.post("/", response_model=ReviewOut)
+def create_review(review: ReviewCreate, db: Session = Depends(get_db)):
+    booking = db.query(Booking).filter(Booking.id == review.booking_id).first()
+    if not booking:
+        raise HTTPException(status_code=404, detail="Booking nahi mili")
+    if booking.user_id != review.user_id:
+        raise HTTPException(status_code=403, detail="Ye booking tumhari nahi hai")
+    if booking.status != BookingStatus.completed:
+        raise HTTPException(
+            status_code=400,
+            detail="Sirf completed booking par hi review de sakte ho (fake review rokne ke liye)",
+        )
+
+    existing = db.query(Review).filter(Review.booking_id == review.booking_id).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="Is booking par pehle se review hai")
+
+    db_review = Review(
+        user_id=review.user_id,
+        provider_id=booking.provider_id,
+        booking_id=review.booking_id,
+        rating=review.rating,
+        comment=review.comment,
+    )
+    db.add(db_review)
+
+    # Provider ka average rating update karo
+    provider = db.query(Provider).filter(Provider.id == booking.provider_id).first()
+    provider.total_reviews += 1
+    provider.avg_rating = (
+        (provider.avg_rating * (provider.total_reviews - 1)) + review.rating
+    ) / provider.total_reviews
+
+    db.commit()
+    db.refresh(db_review)
+    return db_review
+
+
+@router.get("/provider/{provider_id}", response_model=list[ReviewOut])
+def list_provider_reviews(provider_id: int, db: Session = Depends(get_db)):
+    return (
+        db.query(Review)
+        .filter(Review.provider_id == provider_id)
+        .order_by(Review.created_at.desc())
+        .all()
+    )
+
+
+
+==================== F:\sevadilse\backend\app\api\__init__.py ====================
+
+
+
+==================== F:\sevadilse\backend\app\core\config.py ====================
+
+import os
+
+from dotenv import load_dotenv
+
+# F:\sevadilse\backend\.env load à¤•à¤°à¥‡à¤‚
+load_dotenv()
+
+DATABASE_URL = os.getenv("DATABASE_URL")
+
+if not DATABASE_URL:
+    raise RuntimeError(
+        "DATABASE_URL .env file me set nahi hai. "
+        "F:\\sevadilse\\backend\\.env check karein."
+    )
+
+SECRET_KEY = os.getenv("SECRET_KEY", "change-this-secret-key")
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = 60
+
+
+==================== F:\sevadilse\backend\app\core\database.py ====================
+
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker, declarative_base
+from app.core.config import DATABASE_URL
+
+engine = create_engine(DATABASE_URL)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+Base = declarative_base()
+
+
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+
+
+==================== F:\sevadilse\backend\app\core\__init__.py ====================
+
+
+
+==================== F:\sevadilse\backend\app\models\bill_model.py ====================
+
+import enum
+
+from sqlalchemy import Column, Integer, Float, ForeignKey, Enum, DateTime
+from sqlalchemy.sql import func
+
+from app.core.database import Base
+
+
+class BillPaymentStatus(str, enum.Enum):
+    pending = "pending"
+    paid = "paid"
+    failed = "failed"
+    refunded = "refunded"
+
+
+class RestaurantBill(Base):
+    __tablename__ = "restaurant_bills"
+
+    id = Column(Integer, primary_key=True, index=True)
+
+    order_id = Column(
+        Integer,
+        ForeignKey("restaurant_orders.id"),
+        nullable=False,
+        unique=True,
+        index=True,
+    )
+
+    subtotal = Column(Float, nullable=False, default=0.0)
+    discount = Column(Float, nullable=False, default=0.0)
+    gst = Column(Float, nullable=False, default=0.0)
+    service_charge = Column(Float, nullable=False, default=0.0)
+    grand_total = Column(Float, nullable=False, default=0.0)
+
+    payment_status = Column(
+        Enum(BillPaymentStatus),
+        nullable=False,
+        default=BillPaymentStatus.pending,
+    )
+
+    created_at = Column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+    )
+
+    paid_at = Column(DateTime(timezone=True), nullable=True)
+
+
+
+==================== F:\sevadilse\backend\app\models\booking_model.py ====================
+
+import enum
+from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Enum, Float
+from sqlalchemy.sql import func
+from app.core.database import Base
+
+
+class BookingStatus(str, enum.Enum):
+    pending = "pending"
+    confirmed = "confirmed"
+    cancelled = "cancelled"
+    completed = "completed"
+
+
+class Booking(Base):
+    __tablename__ = "bookings"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    provider_id = Column(Integer, ForeignKey("providers.id"), nullable=False)
+    service_id = Column(Integer, ForeignKey("services.id"), nullable=False)
+
+    # Hotel: start_time=check-in, end_time=check-out
+    # Restaurant/Doctor: start_time = slot time, end_time = start_time + duration
+    start_time = Column(DateTime(timezone=True), nullable=False)
+    end_time = Column(DateTime(timezone=True), nullable=False)
+
+    guests = Column(Integer, default=1)  # restaurant guests / hotel occupants
+    total_price = Column(Float, nullable=False)
+    status = Column(Enum(BookingStatus), default=BookingStatus.pending)
+
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+
+==================== F:\sevadilse\backend\app\models\menu_item_model.py ====================
+
+from sqlalchemy import Column, Integer, String, Float, Boolean, ForeignKey, Text
+from app.core.database import Base
+
+
+class MenuItem(Base):
+    __tablename__ = "menu_items"
+
+    id = Column(Integer, primary_key=True, index=True)
+    provider_id = Column(Integer, ForeignKey("providers.id"), nullable=False, index=True)
+
+    name = Column(String, nullable=False)
+    category = Column(String, nullable=True)
+    description = Column(Text, nullable=True)
+
+    price = Column(Float, nullable=False)
+    is_available = Column(Boolean, nullable=False, default=True)
+
+    image_url = Column(String, nullable=True)
+
+
+
+==================== F:\sevadilse\backend\app\models\order_model.py ====================
+
+import enum
+
+from sqlalchemy import Column, Integer, String, Float, ForeignKey, Enum, DateTime
+from sqlalchemy.orm import relationship
+from sqlalchemy.sql import func
+
+from app.core.database import Base
+
+
+class OrderType(str, enum.Enum):
+    dine_in = "dine_in"
+    takeaway = "takeaway"
+    delivery = "delivery"
+
+
+class OrderStatus(str, enum.Enum):
+    pending = "pending"
+    accepted = "accepted"
+    preparing = "preparing"
+    ready = "ready"
+    served = "served"
+    completed = "completed"
+    cancelled = "cancelled"
+
+
+class PaymentStatus(str, enum.Enum):
+    unpaid = "unpaid"
+    pending = "pending"
+    paid = "paid"
+    failed = "failed"
+    refunded = "refunded"
+
+
+class RestaurantOrder(Base):
+    __tablename__ = "restaurant_orders"
+
+    id = Column(Integer, primary_key=True, index=True)
+
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    provider_id = Column(
+        Integer,
+        ForeignKey("providers.id"),
+        nullable=False,
+        index=True,
+    )
+    table_id = Column(
+        Integer,
+        ForeignKey("restaurant_tables.id"),
+        nullable=True,
+        index=True,
+    )
+
+    order_type = Column(
+        Enum(OrderType),
+        nullable=False,
+        default=OrderType.dine_in,
+    )
+
+    status = Column(
+        Enum(OrderStatus),
+        nullable=False,
+        default=OrderStatus.pending,
+    )
+
+    payment_status = Column(
+        Enum(PaymentStatus),
+        nullable=False,
+        default=PaymentStatus.unpaid,
+    )
+
+    subtotal = Column(Float, nullable=False, default=0.0)
+    discount = Column(Float, nullable=False, default=0.0)
+    gst = Column(Float, nullable=False, default=0.0)
+    service_charge = Column(Float, nullable=False, default=0.0)
+    grand_total = Column(Float, nullable=False, default=0.0)
+
+    special_instructions = Column(String, nullable=True)
+
+    created_at = Column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+    )
+
+    items = relationship(
+        "RestaurantOrderItem",
+        back_populates="order",
+        cascade="all, delete-orphan",
+    )
+
+
+class RestaurantOrderItem(Base):
+    __tablename__ = "restaurant_order_items"
+
+    id = Column(Integer, primary_key=True, index=True)
+
+    order_id = Column(
+        Integer,
+        ForeignKey("restaurant_orders.id"),
+        nullable=False,
+        index=True,
+    )
+
+    menu_item_id = Column(
+        Integer,
+        ForeignKey("menu_items.id"),
+        nullable=False,
+    )
+
+    quantity = Column(Integer, nullable=False, default=1)
+    unit_price = Column(Float, nullable=False)
+    total_price = Column(Float, nullable=False)
+
+    order = relationship(
+        "RestaurantOrder",
+        back_populates="items",
+    )
+
+
+
+==================== F:\sevadilse\backend\app\models\provider_model.py ====================
+
+import enum
+from sqlalchemy import Column, Integer, String, Float, ForeignKey, Enum, Text
+from sqlalchemy.orm import relationship
+from app.core.database import Base
+
+
+class ProviderCategory(str, enum.Enum):
+    hotel = "hotel"
+    restaurant = "restaurant"
+    doctor = "doctor"
+
+
+class Provider(Base):
+    __tablename__ = "providers"
+
+    id = Column(Integer, primary_key=True, index=True)
+    owner_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+
+    name = Column(String, nullable=False)
+    category = Column(Enum(ProviderCategory), nullable=False, index=True)
+    description = Column(Text, nullable=True)
+
+    # Doctor-specific (dusre categories ke liye null rahega)
+    specialization = Column(String, nullable=True)
+
+    city = Column(String, nullable=False, index=True)
+    address = Column(String, nullable=True)
+    latitude = Column(Float, nullable=True)
+    longitude = Column(Float, nullable=True)
+
+    avg_rating = Column(Float, default=0.0)
+    total_reviews = Column(Integer, default=0)
+
+    services = relationship("Service", back_populates="provider", cascade="all, delete-orphan")
+
+
+
+==================== F:\sevadilse\backend\app\models\restaurant_table_model.py ====================
+
+import enum
+
+from sqlalchemy import Column, Integer, String, ForeignKey, Enum
+from app.core.database import Base
+
+
+class TableStatus(str, enum.Enum):
+    available = "available"
+    occupied = "occupied"
+    inactive = "inactive"
+
+
+class RestaurantTable(Base):
+    __tablename__ = "restaurant_tables"
+
+    id = Column(Integer, primary_key=True, index=True)
+    provider_id = Column(Integer, ForeignKey("providers.id"), nullable=False, index=True)
+
+    table_number = Column(String, nullable=False)
+    capacity = Column(Integer, nullable=False, default=2)
+    status = Column(
+        Enum(TableStatus),
+        nullable=False,
+        default=TableStatus.available,
+    )
+
+    description = Column(String, nullable=True)
+
+
+
+==================== F:\sevadilse\backend\app\models\review_model.py ====================
+
+from sqlalchemy import Column, Integer, String, ForeignKey, Text, DateTime
+from sqlalchemy.sql import func
+from app.core.database import Base
+
+
+class Review(Base):
+    __tablename__ = "reviews"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    provider_id = Column(Integer, ForeignKey("providers.id"), nullable=False)
+    booking_id = Column(Integer, ForeignKey("bookings.id"), nullable=False, unique=True)
+
+    rating = Column(Integer, nullable=False)  # 1-5
+    comment = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+
+==================== F:\sevadilse\backend\app\models\service_model.py ====================
+
+from sqlalchemy import Column, Integer, String, Float, ForeignKey
+from sqlalchemy.orm import relationship
+from app.core.database import Base
+
+
+class Service(Base):
+    """
+    Har provider ke andar bookable units:
+    - Hotel    -> room type (e.g. 'Deluxe Room')
+    - Restaurant -> table type (e.g. 'Table for 4')
+    - Doctor   -> appointment slot type (e.g. 'General Consultation')
+    """
+
+    __tablename__ = "services"
+
+    id = Column(Integer, primary_key=True, index=True)
+    provider_id = Column(Integer, ForeignKey("providers.id"), nullable=False)
+
+    name = Column(String, nullable=False)
+    price = Column(Float, nullable=False)
+    capacity = Column(Integer, default=1)  # guests/seats; doctor ke liye 1
+    duration_minutes = Column(Integer, nullable=True)  # doctor appointment duration
+    total_units = Column(Integer, default=1)  # kitne rooms/tables/doctor-slots available
+
+    provider = relationship("Provider", back_populates="services")
+
+
+
+==================== F:\sevadilse\backend\app\models\user_model.py ====================
+
+from sqlalchemy import Column, Integer, String, Boolean
+from app.core.database import Base
+
+
+class User(Base):
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, nullable=False)
+    email = Column(String, unique=True, index=True, nullable=False)
+    hashed_password = Column(String, nullable=False)
+    phone = Column(String, nullable=True)
+    is_provider = Column(Boolean, default=False)  # true = business owner
+    is_admin = Column(Boolean, default=False)
+
+
+
+==================== F:\sevadilse\backend\app\models\__init__.py ====================
+
+from app.models.user_model import User
+from app.models.provider_model import Provider
+from app.models.service_model import Service
+from app.models.booking_model import Booking
+from app.models.review_model import Review
+
+from app.models.restaurant_table_model import RestaurantTable
+from app.models.menu_item_model import MenuItem
+from app.models.order_model import RestaurantOrder, RestaurantOrderItem
+from app.models.bill_model import RestaurantBill
+
+
+
+==================== F:\sevadilse\backend\app\schemas\booking_schema.py ====================
+
+from datetime import datetime
+from pydantic import BaseModel
+from app.models.booking_model import BookingStatus
+
+
+class BookingCreate(BaseModel):
+    user_id: int  # JWT aane tak manually pass karo
+    service_id: int
+    start_time: datetime
+    end_time: datetime
+    guests: int = 1
+
+
+class BookingOut(BaseModel):
+    id: int
+    user_id: int
+    provider_id: int
+    service_id: int
+    start_time: datetime
+    end_time: datetime
+    guests: int
+    total_price: float
+    status: BookingStatus
+
+    class Config:
+        from_attributes = True
+
+
+
+==================== F:\sevadilse\backend\app\schemas\provider_schema.py ====================
+
+from pydantic import BaseModel
+from app.models.provider_model import ProviderCategory
+
+
+class ServiceCreate(BaseModel):
+    name: str
+    price: float
+    capacity: int = 1
+    duration_minutes: int | None = None
+    total_units: int = 1
+
+
+class ServiceOut(BaseModel):
+    id: int
+    name: str
+    price: float
+    capacity: int
+    duration_minutes: int | None
+    total_units: int
+
+    class Config:
+        from_attributes = True
+
+
+class ProviderCreate(BaseModel):
+    name: str
+    category: ProviderCategory
+    description: str | None = None
+    specialization: str | None = None  # sirf doctor ke liye
+    city: str
+    address: str | None = None
+    latitude: float | None = None
+    longitude: float | None = None
+
+
+class ProviderOut(BaseModel):
+    id: int
+    name: str
+    category: ProviderCategory
+    description: str | None
+    specialization: str | None
+    city: str
+    avg_rating: float
+    total_reviews: int
+
+    class Config:
+        from_attributes = True
+
+
+class ProviderDetailOut(ProviderOut):
+    services: list[ServiceOut] = []
+
+
+
+==================== F:\sevadilse\backend\app\schemas\restaurant_table_schema.py ====================
+
+from pydantic import BaseModel
+from app.models.restaurant_table_model import TableStatus
+
+
+class RestaurantTableCreate(BaseModel):
+    table_number: str
+    capacity: int = 2
+    description: str | None = None
+
+
+class RestaurantTableUpdate(BaseModel):
+    table_number: str | None = None
+    capacity: int | None = None
+    status: TableStatus | None = None
+    description: str | None = None
+
+
+class RestaurantTableOut(BaseModel):
+    id: int
+    provider_id: int
+    table_number: str
+    capacity: int
+    status: TableStatus
+    description: str | None
+
+    class Config:
+        from_attributes = True
+
+
+
+==================== F:\sevadilse\backend\app\schemas\review_schema.py ====================
+
+from datetime import datetime
+from pydantic import BaseModel, Field
+
+
+class ReviewCreate(BaseModel):
+    user_id: int  # JWT aane tak manually pass karo
+    booking_id: int
+    rating: int = Field(ge=1, le=5)
+    comment: str | None = None
+
+
+class ReviewOut(BaseModel):
+    id: int
+    user_id: int
+    provider_id: int
+    booking_id: int
+    rating: int
+    comment: str | None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+
+==================== F:\sevadilse\backend\app\schemas\user_schema.py ====================
+
+from pydantic import BaseModel, EmailStr
+
+
+class UserCreate(BaseModel):
+    name: str
+    email: EmailStr
+    password: str
+    phone: str | None = None
+    is_provider: bool = False
+
+
+class UserOut(BaseModel):
+    id: int
+    name: str
+    email: EmailStr
+    is_provider: bool
+
+    class Config:
+        from_attributes = True
+
+
+
+==================== F:\sevadilse\backend\app\schemas\__init__.py ====================
+
+
+
+==================== F:\sevadilse\backend\app\services\availability_service.py ====================
+
+from datetime import datetime
+from sqlalchemy.orm import Session
+from sqlalchemy import and_
+
+from app.models.booking_model import Booking, BookingStatus
+from app.models.service_model import Service
+
+
+def is_available(
+    db: Session, service_id: int, start_time: datetime, end_time: datetime
+) -> bool:
+    """
+    Check karta hai ki is service (room/table/doctor-slot) ke paas is time range
+    me enough free units hain ya nahi. Overlapping bookings count karke
+    total_units se compare karta hai.
+    """
+    service = db.query(Service).filter(Service.id == service_id).first()
+    if not service:
+        return False
+
+    # Is time range se overlap karne wali saari active bookings nikaalo
+    overlapping = (
+        db.query(Booking)
+        .filter(
+            Booking.service_id == service_id,
+            Booking.status.in_([BookingStatus.pending, BookingStatus.confirmed]),
+            and_(Booking.start_time < end_time, Booking.end_time > start_time),
+        )
+        .count()
+    )
+
+    return overlapping < service.total_units
+
+
+
+==================== F:\sevadilse\backend\app\services\__init__.py ====================
+
+
+
+==================== F:\sevadilse\backend\app\main.py ====================
+
+from fastapi import FastAPI
+
+from app.core.database import Base, engine
+from app.api import (
+    auth,
+    providers,
+    bookings,
+    reviews,
+    restaurant_tables,
+)
+
+# Saare models import hone chahiye taaki SQLAlchemy tables register kare
+from app.models import (
+    user_model,
+    provider_model,
+    service_model,
+    booking_model,
+    review_model,
+    restaurant_table_model,
+    menu_item_model,
+    order_model,
+    bill_model,
+)
+
+app = FastAPI(
+    title="ServiceHub Backend",
+    description="Hotel, restaurant aur doctor bookings ke liye ek unified backend",
+    version="0.1.0",
+)
+
+app.include_router(auth.router)
+app.include_router(providers.router)
+app.include_router(bookings.router)
+app.include_router(reviews.router)
+app.include_router(restaurant_tables.router)
+
+@app.on_event("startup")
+def create_tables():
+    Base.metadata.create_all(bind=engine)
+
+
+@app.get("/")
+def root():
+    return {"message": "ServiceHub backend chal raha hai 🚀"}
+
+
+
+==================== F:\sevadilse\backend\app\__init__.py ====================
+
