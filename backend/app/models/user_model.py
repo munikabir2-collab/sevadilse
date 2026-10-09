@@ -1,3 +1,4 @@
+
 from sqlalchemy import Column, Integer, String, Boolean
 from app.core.database import Base
 
@@ -10,5 +11,5 @@ class User(Base):
     email = Column(String, unique=True, index=True, nullable=False)
     hashed_password = Column(String, nullable=False)
     phone = Column(String, nullable=True)
-    is_provider = Column(Boolean, default=False)  # true = business owner
+    is_provider = Column(Boolean, default=False)
     is_admin = Column(Boolean, default=False)
