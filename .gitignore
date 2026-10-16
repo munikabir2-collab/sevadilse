@@ -1,26 +1,32 @@
+__pycache__/
+*.py[cod]
+.env
+.env.*
+!.env.example
+.venv/
+venv/
+uvicorn_log.txt
+
+# Frontend dependencies and build
+frontend/node_modules/
+frontend/dist/
+
+# Android / Gradle build and cache
 .gradle/
 .idea/
 .kotlin/
-build/
 **/build/
 local.properties
-*.iml
-.DS_Store
 
-# Android
-captures/
-.externalNativeBuild/
-.cxx/
+# Temporary extracted files and backups
+_frontend_extract/
+*.bak
 
-# APK / generated files
-*.apk
-*.aab
+# Frontend environment files
+frontend/.env
+frontend/.env.*
+!frontend/.env.example
 
-# Secrets / local configuration
-*.jks
-*.keystore
-keystore.properties
-.env
-.env.*
-openapi.json
-__pycache__/
+# Generated frontend files
+frontend/node_modules/
+frontend/dist/
