@@ -139,10 +139,13 @@ def signup(
             detail="Email pehle se registered hai",
         )
 
+    password_hash = get_password_hash(user.password)
+
     new_user = User(
         name=user.name,
         email=user.email,
-        hashed_password=get_password_hash(user.password),
+        password=password_hash,
+        hashed_password=password_hash,
         phone=user.phone,
         is_provider=user.is_provider,
         is_admin=False,
