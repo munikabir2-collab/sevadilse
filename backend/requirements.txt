@@ -10,3 +10,4 @@ alembic
 python-dotenv
 requests
 python-multipart
+argon2-cffi
