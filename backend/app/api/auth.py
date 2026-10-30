@@ -7,6 +7,7 @@ from fastapi.security import (
 )
 from jose import JWTError, jwt
 from passlib.context import CryptContext
+from passlib.exc import UnknownHashError
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -32,10 +33,9 @@ router = APIRouter(
 # ============================================================
 
 pwd_context = CryptContext(
-    schemes=["bcrypt"],
+    schemes=["bcrypt", "argon2"],
     deprecated="auto",
 )
-
 
 # ============================================================
 # JWT SETTINGS
@@ -67,16 +67,18 @@ oauth2_scheme = OAuth2PasswordBearer(
 # PASSWORD HELPERS
 # ============================================================
 
+
 def verify_password(
     plain_password: str,
     hashed_password: str,
 ) -> bool:
-    return pwd_context.verify(
-        plain_password,
-        hashed_password,
-    )
-
-
+    try:
+        return pwd_context.verify(
+            plain_password,
+            hashed_password,
+        )
+    except (UnknownHashError, ValueError, TypeError):
+        return False
 def get_password_hash(
     password: str,
 ) -> str:
