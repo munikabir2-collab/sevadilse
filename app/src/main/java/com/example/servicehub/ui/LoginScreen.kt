@@ -41,7 +41,8 @@ import kotlinx.coroutines.launch
 @Composable
 fun LoginScreen(
     tokenManager: TokenManager,
-    onLoginSuccess: (Boolean, Boolean) -> Unit
+    onLoginSuccess: (Boolean, Boolean) -> Unit,
+    onCreateAccount: () -> Unit
 ) {
 
     var email by remember {
@@ -228,6 +229,7 @@ fun LoginScreen(
 
                                     if (data != null) {
 
+
                                         /*
                                          * Login response se:
                                          *
@@ -343,14 +345,12 @@ fun LoginScreen(
                         )
                     )
                 }
-
                 TextButton(
                     onClick = {
 
                         if (!isLoading) {
 
-                            errorMessage =
-                                "Signup screen next step mein add karenge"
+                            onCreateAccount()
                         }
                     },
                     enabled = !isLoading,
@@ -358,6 +358,7 @@ fun LoginScreen(
                 ) {
 
                     Text("Create new account")
+
                 }
             }
         }

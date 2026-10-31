@@ -62,3 +62,35 @@ data class UserResponse(
     @SerializedName("is_admin")
     val isAdmin: Boolean
 )
+data class ServiceCreateRequest(
+    val name: String,
+    val price: Double,
+    val capacity: Int = 1,
+
+    @SerializedName("duration_minutes")
+    val durationMinutes: Int? = null,
+
+    @SerializedName("total_units")
+    val totalUnits: Int = 1
+)
+
+data class ServiceResponse(
+    val id: Int,
+    val name: String,
+    val price: Double,
+    val capacity: Int,
+
+    @SerializedName("duration_minutes")
+    val durationMinutes: Int?,
+
+    @SerializedName("total_units")
+    val totalUnits: Int
+)
+
+data class ProviderDetailResponse(
+    val id: Int,
+    val name: String,
+    val category: String,
+    val city: String,
+    val services: List<ServiceResponse> = emptyList()
+)
