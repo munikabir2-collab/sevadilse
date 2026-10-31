@@ -28,6 +28,7 @@ from app.core.database import Base, engine
 # ============================================================
 
 from app.api import (
+    admin,
     auth,
     providers,
     bookings,
@@ -83,6 +84,7 @@ app = FastAPI(
 # ============================================================
 
 app.include_router(auth.router)
+app.include_router(admin.router)
 
 
 # ============================================================

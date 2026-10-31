@@ -568,11 +568,7 @@ private fun ProviderDashboard(
                 onBack = backToDashboard,
                 modifier = Modifier.padding(paddingValues)
             )
-
-            "Admin" -> ModuleScreen(
-                title = "Admin",
-                emoji = "🛡️",
-                description = "Administrator controls.",
+            "Admin" -> AdminDashboardScreen(
                 onBack = backToDashboard,
                 modifier = Modifier.padding(paddingValues)
             )
@@ -996,3 +992,5 @@ private fun ProfileRow(
         Divider(modifier = Modifier.padding(top = 10.dp))
     }
 }
+
+
