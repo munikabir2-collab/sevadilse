@@ -1,7 +1,7 @@
 ﻿@file:OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 
 package com.example.servicehub
-import com.example.servicehub.ui.SignupScreen
+
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
@@ -56,6 +56,7 @@ import com.example.servicehub.data.RetrofitClient
 import com.example.servicehub.data.UserResponse
 import com.example.servicehub.data.local.TokenManager
 import com.example.servicehub.ui.LoginScreen
+import com.example.servicehub.ui.SignupScreen
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
@@ -84,6 +85,7 @@ class MainActivity : ComponentActivity() {
                     var isAdmin by remember { mutableStateOf(false) }
                     var currentUser by remember { mutableStateOf<UserResponse?>(null) }
                     var showSignup by remember { mutableStateOf(false) }
+
                     // -----------------------------------------
                     // CHECK SAVED LOGIN SESSION
                     // -----------------------------------------
@@ -137,89 +139,97 @@ class MainActivity : ComponentActivity() {
 
                     when {
 
-                        showSignup && !isLoggedIn -> {
-                            SignupScreen(
-                                onSignupSuccess = { showSignup = false },
-                                onBackToLogin = { showSignup = false }
-                            )
-                        }
-
-
                         isCheckingLogin -> {
                             LoadingScreen()
                         }
 
                         !isLoggedIn -> {
 
-                            LoginScreen(
-                                tokenManager = tokenManager,
+                            BackHandler(enabled = showSignup) {
+                                showSignup = false
+                            }
 
-                                onLoginSuccess = { provider, admin ->
+                            if (showSignup) {
 
-                                    appScope.launch {
+                                SignupScreen(
+                                    onSignupSuccess = { showSignup = false },
+                                    onBackToLogin = { showSignup = false }
+                                )
 
-                                        isCheckingLogin = true
+                            } else {
 
-                                        isProvider = provider
-                                        isAdmin = admin
+                                LoginScreen(
+                                    tokenManager = tokenManager,
 
-                                        if (!provider && !admin) {
-                                            tokenManager.clear()
-                                            currentUser = null
-                                            isLoggedIn = false
-                                            isCheckingLogin = false
-                                            return@launch
-                                        }
+                                    onCreateAccount = { showSignup = true },
 
-                                        try {
+                                    onLoginSuccess = { provider, admin ->
 
-                                            val savedToken = tokenManager.token.first()
+                                        appScope.launch {
 
-                                            if (savedToken.isNullOrBlank()) {
+                                            isCheckingLogin = true
 
+                                            isProvider = provider
+                                            isAdmin = admin
+
+                                            if (!provider && !admin) {
                                                 tokenManager.clear()
                                                 currentUser = null
                                                 isLoggedIn = false
-
-                                            } else {
-
-                                                val response =
-                                                    RetrofitClient.api.getCurrentUser(
-                                                        "Bearer $savedToken"
-                                                    )
-
-                                                val user = response.body()
-
-                                                if (
-                                                    response.isSuccessful &&
-                                                    user != null &&
-                                                    (user.isProvider || user.isAdmin)
-                                                ) {
-                                                    currentUser = user
-                                                    isProvider = user.isProvider
-                                                    isAdmin = user.isAdmin
-                                                    isLoggedIn = true
-                                                } else {
-                                                    tokenManager.clear()
-                                                    currentUser = null
-                                                    isProvider = false
-                                                    isAdmin = false
-                                                    isLoggedIn = false
-                                                }
+                                                isCheckingLogin = false
+                                                return@launch
                                             }
 
-                                        } catch (_: Exception) {
+                                            try {
 
-                                            // Login response confirmed the role.
-                                            // Keep session during temporary outage.
-                                            isLoggedIn = provider || admin
+                                                val savedToken = tokenManager.token.first()
+
+                                                if (savedToken.isNullOrBlank()) {
+
+                                                    tokenManager.clear()
+                                                    currentUser = null
+                                                    isLoggedIn = false
+
+                                                } else {
+
+                                                    val response =
+                                                        RetrofitClient.api.getCurrentUser(
+                                                            "Bearer $savedToken"
+                                                        )
+
+                                                    val user = response.body()
+
+                                                    if (
+                                                        response.isSuccessful &&
+                                                        user != null &&
+                                                        (user.isProvider || user.isAdmin)
+                                                    ) {
+                                                        currentUser = user
+                                                        isProvider = user.isProvider
+                                                        isAdmin = user.isAdmin
+                                                        isLoggedIn = true
+                                                    } else {
+                                                        tokenManager.clear()
+                                                        currentUser = null
+                                                        isProvider = false
+                                                        isAdmin = false
+                                                        isLoggedIn = false
+                                                    }
+                                                }
+
+                                            } catch (_: Exception) {
+
+                                                // Login response confirmed the role.
+                                                // Keep session during temporary outage.
+                                                isLoggedIn = provider || admin
+                                            }
+
+                                            isCheckingLogin = false
                                         }
-
-                                        isCheckingLogin = false
                                     }
-                                },
-                                onCreateAccount = { showSignup = true }
-                            )
+                                )
+
+                            }
                         }
 
                         else -> {
@@ -568,6 +578,7 @@ private fun ProviderDashboard(
                 onBack = backToDashboard,
                 modifier = Modifier.padding(paddingValues)
             )
+
             "Admin" -> AdminDashboardScreen(
                 onBack = backToDashboard,
                 modifier = Modifier.padding(paddingValues)
@@ -992,5 +1003,3 @@ private fun ProfileRow(
         Divider(modifier = Modifier.padding(top = 10.dp))
     }
 }
-
-

@@ -1,7 +1,9 @@
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+from app.api.auth import get_current_user
 from app.models.menu_item_model import MenuItem
 from app.models.provider_model import Provider, ProviderCategory
 from app.schemas.menu_schema import (
@@ -16,6 +18,26 @@ router = APIRouter(
 )
 
 
+def check_restaurant_access(
+    provider: Provider,
+    current_user,
+):
+    if provider.category != ProviderCategory.restaurant:
+        raise HTTPException(
+            status_code=400,
+            detail="Ye provider restaurant nahi hai",
+        )
+
+    if (
+        provider.owner_id != current_user.id
+        and not current_user.is_admin
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail="Is restaurant ka menu manage karne ki permission nahi hai",
+        )
+
+
 @router.post(
     "/{provider_id}/menu",
     response_model=MenuItemOut,
@@ -23,6 +45,7 @@ router = APIRouter(
 def create_menu_item(
     provider_id: int,
     item: MenuItemCreate,
+    current_user=Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     provider = (
@@ -37,11 +60,7 @@ def create_menu_item(
             detail="Restaurant provider nahi mila",
         )
 
-    if provider.category != ProviderCategory.restaurant:
-        raise HTTPException(
-            status_code=400,
-            detail="Ye provider restaurant nahi hai",
-        )
+    check_restaurant_access(provider, current_user)
 
     db_item = MenuItem(
         provider_id=provider_id,
@@ -97,7 +116,10 @@ def list_menu(
             MenuItem.is_available.is_(True)
         )
 
-    return query.order_by(MenuItem.category, MenuItem.name).all()
+    return query.order_by(
+        MenuItem.category,
+        MenuItem.name,
+    ).all()
 
 
 @router.get(
@@ -130,6 +152,7 @@ def get_menu_item(
 def update_menu_item(
     item_id: int,
     data: MenuItemUpdate,
+    current_user=Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     item = (
@@ -143,6 +166,20 @@ def update_menu_item(
             status_code=404,
             detail="Menu item nahi mila",
         )
+
+    provider = (
+        db.query(Provider)
+        .filter(Provider.id == item.provider_id)
+        .first()
+    )
+
+    if not provider:
+        raise HTTPException(
+            status_code=404,
+            detail="Restaurant provider nahi mila",
+        )
+
+    check_restaurant_access(provider, current_user)
 
     updates = data.model_dump(exclude_unset=True)
 
@@ -158,6 +195,7 @@ def update_menu_item(
 @router.delete("/menu/{item_id}")
 def delete_menu_item(
     item_id: int,
+    current_user=Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     item = (
@@ -171,6 +209,20 @@ def delete_menu_item(
             status_code=404,
             detail="Menu item nahi mila",
         )
+
+    provider = (
+        db.query(Provider)
+        .filter(Provider.id == item.provider_id)
+        .first()
+    )
+
+    if not provider:
+        raise HTTPException(
+            status_code=404,
+            detail="Restaurant provider nahi mila",
+        )
+
+    check_restaurant_access(provider, current_user)
 
     db.delete(item)
     db.commit()

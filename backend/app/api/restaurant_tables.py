@@ -1,7 +1,9 @@
-﻿from fastapi import APIRouter, Depends, HTTPException
+﻿
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+from app.api.auth import get_current_user
 from app.models.provider_model import Provider, ProviderCategory
 from app.models.restaurant_table_model import RestaurantTable, TableStatus
 from app.schemas.restaurant_table_schema import (
@@ -16,6 +18,35 @@ router = APIRouter(
 )
 
 
+# ============================================================
+# RESTAURANT OWNER / ADMIN ACCESS CHECK
+# ============================================================
+
+def check_restaurant_access(
+    provider: Provider,
+    current_user,
+):
+    if provider.category != ProviderCategory.restaurant:
+        raise HTTPException(
+            status_code=400,
+            detail="Ye provider restaurant nahi hai",
+        )
+
+    if (
+        provider.owner_id != current_user.id
+        and not current_user.is_admin
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail="Is restaurant ki tables manage karne ki permission nahi hai",
+        )
+
+
+# ============================================================
+# CREATE RESTAURANT TABLE
+# OWNER / ADMIN ONLY
+# ============================================================
+
 @router.post(
     "/{provider_id}/tables",
     response_model=RestaurantTableOut,
@@ -23,6 +54,7 @@ router = APIRouter(
 def create_table(
     provider_id: int,
     table: RestaurantTableCreate,
+    current_user=Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     provider = (
@@ -37,11 +69,7 @@ def create_table(
             detail="Restaurant provider nahi mila",
         )
 
-    if provider.category != ProviderCategory.restaurant:
-        raise HTTPException(
-            status_code=400,
-            detail="Ye provider restaurant nahi hai",
-        )
+    check_restaurant_access(provider, current_user)
 
     if table.capacity < 1:
         raise HTTPException(
@@ -79,6 +107,11 @@ def create_table(
     return db_table
 
 
+# ============================================================
+# LIST RESTAURANT TABLES
+# PUBLIC API
+# ============================================================
+
 @router.get(
     "/{provider_id}/tables",
     response_model=list[RestaurantTableOut],
@@ -100,17 +133,30 @@ def list_tables(
             detail="Restaurant provider nahi mila",
         )
 
+    if provider.category != ProviderCategory.restaurant:
+        raise HTTPException(
+            status_code=400,
+            detail="Ye provider restaurant nahi hai",
+        )
+
     query = db.query(RestaurantTable).filter(
         RestaurantTable.provider_id == provider_id
     )
 
-    if status:
+    if status is not None:
         query = query.filter(
             RestaurantTable.status == status
         )
 
-    return query.order_by(RestaurantTable.table_number).all()
+    return query.order_by(
+        RestaurantTable.table_number
+    ).all()
 
+
+# ============================================================
+# GET SINGLE TABLE
+# PUBLIC API
+# ============================================================
 
 @router.get(
     "/tables/{table_id}",
@@ -135,6 +181,11 @@ def get_table(
     return table
 
 
+# ============================================================
+# UPDATE RESTAURANT TABLE
+# OWNER / ADMIN ONLY
+# ============================================================
+
 @router.patch(
     "/tables/{table_id}",
     response_model=RestaurantTableOut,
@@ -142,6 +193,7 @@ def get_table(
 def update_table(
     table_id: int,
     data: RestaurantTableUpdate,
+    current_user=Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     table = (
@@ -156,15 +208,36 @@ def update_table(
             detail="Table nahi mili",
         )
 
+    provider = (
+        db.query(Provider)
+        .filter(Provider.id == table.provider_id)
+        .first()
+    )
+
+    if not provider:
+        raise HTTPException(
+            status_code=404,
+            detail="Restaurant provider nahi mila",
+        )
+
+    check_restaurant_access(provider, current_user)
+
     updates = data.model_dump(exclude_unset=True)
 
-    if "capacity" in updates and updates["capacity"] < 1:
+    if (
+        "capacity" in updates
+        and updates["capacity"] is not None
+        and updates["capacity"] < 1
+    ):
         raise HTTPException(
             status_code=400,
             detail="Table capacity kam se kam 1 honi chahiye",
         )
 
-    if "table_number" in updates:
+    if (
+        "table_number" in updates
+        and updates["table_number"] is not None
+    ):
         existing = (
             db.query(RestaurantTable)
             .filter(
@@ -190,11 +263,15 @@ def update_table(
     return table
 
 
-@router.delete(
-    "/tables/{table_id}",
-)
+# ============================================================
+# DELETE RESTAURANT TABLE
+# OWNER / ADMIN ONLY
+# ============================================================
+
+@router.delete("/tables/{table_id}")
 def delete_table(
     table_id: int,
+    current_user=Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     table = (
@@ -208,6 +285,20 @@ def delete_table(
             status_code=404,
             detail="Table nahi mili",
         )
+
+    provider = (
+        db.query(Provider)
+        .filter(Provider.id == table.provider_id)
+        .first()
+    )
+
+    if not provider:
+        raise HTTPException(
+            status_code=404,
+            detail="Restaurant provider nahi mila",
+        )
+
+    check_restaurant_access(provider, current_user)
 
     db.delete(table)
     db.commit()
