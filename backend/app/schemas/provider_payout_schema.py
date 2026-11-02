@@ -265,7 +265,7 @@ class PayoutVerificationStatus(BaseModel):
 class ProviderPayoutOnboardingStatusOut(BaseModel):
     provider_id: int
 
-    payout_profile_id: int
+    payout_profile_id: Optional[int] = None
 
     linked_account: PayoutOnboardingStep
 

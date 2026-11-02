@@ -1,11 +1,14 @@
 import os
 import logging
+import hashlib
+import hmac
+import json
 from typing import Any, Dict
 
 import requests
 from dotenv import load_dotenv
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request, Header
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -33,9 +36,6 @@ from app.api.auth import get_current_user
 # ENV
 # ============================================================
 
-# Project ke .env ko load karega.
-# Isse uvicorn ke through application start hone par bhi
-# Razorpay credentials available rahenge.
 load_dotenv()
 
 
@@ -66,6 +66,11 @@ RAZORPAY_KEY_SECRET = os.getenv(
 ).strip()
 
 RAZORPAY_BASE_URL = "https://api.razorpay.com/v2"
+
+RAZORPAY_WEBHOOK_SECRET = os.getenv(
+    "RAZORPAY_WEBHOOK_SECRET",
+    "",
+).strip()
 
 
 # ============================================================
@@ -302,15 +307,15 @@ def setup_provider_payout_account(
 
         profile = existing
 
-        profile.razorpay_account_id = (
-            razorpay_account_id
-        )
+        profile.razorpay_account_id = razorpay_account_id
 
-        profile.status = (
-            PayoutAccountStatus.pending
-        )
+        profile.razorpay_stakeholder_id = None
+        profile.razorpay_product_id = None
 
+        profile.status = PayoutAccountStatus.pending
         profile.payouts_enabled = False
+        profile.bank_submitted = False
+        profile.razorpay_activation_status = None
 
     else:
 
@@ -319,6 +324,8 @@ def setup_provider_payout_account(
             razorpay_account_id=razorpay_account_id,
             status=PayoutAccountStatus.pending,
             payouts_enabled=False,
+            bank_submitted=False,
+            razorpay_activation_status=None,
         )
 
         db.add(profile)
@@ -419,8 +426,6 @@ def create_provider_stakeholder(
     )
 
     return profile
-
-
 # ============================================================
 # 3. REQUEST ROUTE PRODUCT
 # ============================================================
@@ -573,16 +578,15 @@ def configure_settlement_bank(
         "tnc_accepted": True,
     }
 
+    # Razorpay API successful hone par hi bank submitted mark karein.
     razorpay_request(
         "PATCH",
         endpoint,
         bank_payload,
     )
 
-    # IMPORTANT:
-    # Bank details submit hone ke baad Razorpay
-    # verification/KYC complete hone ka wait ho sakta hai.
-
+    profile.bank_submitted = True
+    profile.razorpay_activation_status = None
     profile.status = PayoutAccountStatus.pending
     profile.payouts_enabled = False
 
@@ -601,9 +605,7 @@ def configure_settlement_bank(
 # 5. ONBOARDING STATUS
 # ============================================================
 
-@router.get(
-    "/onboarding/status",
-)
+@router.get("/onboarding/status")
 def get_onboarding_status(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -614,10 +616,49 @@ def get_onboarding_status(
         db,
     )
 
-    profile = get_profile(
-        provider.id,
-        db,
+    profile = (
+        db.query(ProviderPayoutProfile)
+        .filter(
+            ProviderPayoutProfile.provider_id == provider.id
+        )
+        .first()
     )
+
+    # Payout onboarding abhi start nahi hua hai.
+    if not profile:
+        return {
+            "provider_id": provider.id,
+            "payout_profile_id": None,
+
+            "linked_account": {
+                "completed": False,
+                "id": None,
+            },
+
+            "stakeholder": {
+                "completed": False,
+                "id": None,
+            },
+
+            "route_product": {
+                "completed": False,
+                "id": None,
+            },
+
+            "bank": {
+                "completed": False,
+            },
+
+            "verification": {
+                "completed": False,
+                "status": "not_started",
+                "activation_status": None,
+                "payouts_enabled": False,
+            },
+
+            "next_step": "linked_account",
+            "ready_for_payout": False,
+        }
 
     linked_account_ready = bool(
         profile.razorpay_account_id
@@ -631,8 +672,8 @@ def get_onboarding_status(
         profile.razorpay_product_id
     )
 
-    bank_submitted = (
-        route_product_ready
+    bank_ready = bool(
+        profile.bank_submitted
     )
 
     verification_complete = (
@@ -640,6 +681,7 @@ def get_onboarding_status(
         and profile.payouts_enabled
     )
 
+    # Next onboarding step.
     if verification_complete:
         next_step = "completed"
 
@@ -652,7 +694,7 @@ def get_onboarding_status(
     elif not route_product_ready:
         next_step = "route_product"
 
-    elif not bank_submitted:
+    elif not bank_ready:
         next_step = "bank"
 
     else:
@@ -678,17 +720,17 @@ def get_onboarding_status(
         },
 
         "bank": {
-            "completed": bank_submitted,
+            "completed": bank_ready,
         },
 
         "verification": {
             "completed": verification_complete,
             "status": profile.status.value,
+            "activation_status": profile.razorpay_activation_status,
             "payouts_enabled": profile.payouts_enabled,
         },
 
         "next_step": next_step,
-
         "ready_for_payout": verification_complete,
     }
 
@@ -874,3 +916,170 @@ def update_provider_payout_status(
     db.refresh(profile)
 
     return profile
+# ============================================================
+# 11. RAZORPAY ROUTE WEBHOOK
+# ============================================================
+
+@router.post("/webhook/razorpay")
+async def razorpay_route_webhook(
+    request: Request,
+    x_razorpay_signature: str | None = Header(
+        default=None,
+        alias="X-Razorpay-Signature",
+    ),
+    db: Session = Depends(get_db),
+):
+    """
+    Razorpay Route activation webhook.
+
+    IMPORTANT:
+    - Signature raw request body se verify hota hai.
+    - Webhook activation ko local payout approval se alag rakha gaya hai.
+    - Payouts admin approval ke bina enable nahi honge.
+    """
+
+    if not RAZORPAY_WEBHOOK_SECRET:
+        logger.error("Razorpay webhook secret is not configured")
+        raise HTTPException(
+            status_code=503,
+            detail="Razorpay webhook configuration missing.",
+        )
+
+    if not x_razorpay_signature:
+        raise HTTPException(
+            status_code=400,
+            detail="Razorpay webhook signature missing.",
+        )
+
+    raw_body = await request.body()
+
+    expected_signature = hmac.new(
+        RAZORPAY_WEBHOOK_SECRET.encode("utf-8"),
+        raw_body,
+        hashlib.sha256,
+    ).hexdigest()
+
+    if not hmac.compare_digest(
+        expected_signature,
+        x_razorpay_signature.strip(),
+    ):
+        logger.warning("Razorpay webhook signature verification failed")
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid Razorpay webhook signature.",
+        )
+
+    try:
+        event_data = json.loads(raw_body.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid Razorpay webhook JSON payload.",
+        )
+
+    event_name = event_data.get("event")
+    supported_events = {
+        "product.route.under_review": "under_review",
+        "product.route.needs_clarification": "needs_clarification",
+        "product.route.activated": "activated",
+    }
+
+    activation_status = supported_events.get(event_name)
+
+    # Other Razorpay events are acknowledged and ignored.
+    if activation_status is None:
+        return {
+            "status": "ignored",
+            "event": event_name,
+        }
+
+    payload = event_data.get("payload") or {}
+    merchant_product = payload.get("merchant_product") or {}
+    product_entity = merchant_product.get("entity") or {}
+
+    account_id = (
+        event_data.get("account_id")
+        or product_entity.get("merchant_id")
+    )
+    product_id = product_entity.get("id")
+
+    if not account_id:
+        logger.warning(
+            "Razorpay Route webhook has no account_id; event=%s",
+            event_name,
+        )
+        return {
+            "status": "ignored",
+            "reason": "account_id_missing",
+        }
+
+    profile = (
+        db.query(ProviderPayoutProfile)
+        .filter(
+            ProviderPayoutProfile.razorpay_account_id == account_id
+        )
+        .first()
+    )
+
+    if not profile:
+        logger.warning(
+            "Razorpay Route webhook account not found locally; account_id=%s",
+            account_id,
+        )
+        return {
+            "status": "ignored",
+            "reason": "linked_account_not_found",
+        }
+
+    # Do not apply an old/stale product event to a newer product.
+    if (
+        product_id
+        and profile.razorpay_product_id
+        and product_id != profile.razorpay_product_id
+    ):
+        logger.warning(
+            "Razorpay Route webhook product mismatch for provider_id=%s",
+            profile.provider_id,
+        )
+        return {
+            "status": "ignored",
+            "reason": "route_product_id_mismatch",
+        }
+
+    profile.razorpay_activation_status = activation_status
+
+    if activation_status in {
+        "under_review",
+        "needs_clarification",
+    }:
+        # Review/clarification state must never permit payouts.
+        profile.status = PayoutAccountStatus.pending
+        profile.payouts_enabled = False
+
+    # On "activated", record Razorpay's activation only.
+    # Local payout status remains subject to the existing admin approval.
+    db.commit()
+    db.refresh(profile)
+
+    requirements = (
+        (merchant_product.get("data") or {}).get("requirements") or []
+    )
+
+    logger.info(
+        "Razorpay Route webhook processed: event=%s provider_id=%s "
+        "activation_status=%s requirements_count=%s",
+        event_name,
+        profile.provider_id,
+        activation_status,
+        len(requirements),
+    )
+
+    return {
+        "status": "processed",
+        "event": event_name,
+        "provider_id": profile.provider_id,
+        "activation_status": profile.razorpay_activation_status,
+        "local_payout_status": profile.status.value,
+        "payouts_enabled": profile.payouts_enabled,
+        "requirements_count": len(requirements),
+    }
