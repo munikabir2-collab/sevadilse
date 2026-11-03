@@ -7,8 +7,7 @@ data class PayoutOnboardingStatus(
     val providerId: Int,
 
     @SerializedName("payout_profile_id")
-    val payoutProfileId: Int,
-
+    val payoutProfileId: Int?,
     @SerializedName("linked_account")
     val linkedAccount: PayoutStep,
 

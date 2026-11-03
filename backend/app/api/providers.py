@@ -1,17 +1,21 @@
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
-
+from app.models.booking_model import Booking
 from app.core.database import get_db
 from app.api.auth import get_current_user
 from app.models.provider_model import Provider, ProviderCategory
 from app.models.service_model import Service
+
+
 from app.schemas.provider_schema import (
     ProviderCreate,
     ProviderOut,
     ProviderDetailOut,
+    ProviderUpdate,
     ServiceCreate,
     ServiceOut,
+    ServiceUpdate,
 )
 
 router = APIRouter(prefix="/providers", tags=["Providers"])

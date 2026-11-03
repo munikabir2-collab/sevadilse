@@ -63,6 +63,42 @@ interface ApiService {
         @Body request: ServiceCreateRequest
     ): Response<ServiceResponse>
 
+    // Raw (JSON) versions used by ServicesScreen / DoctorSlotsScreen
+    @GET("providers/{provider_id}")
+    suspend fun getProviderRaw(
+        @Path("provider_id") providerId: Int
+    ): Response<JsonElement>
+
+    @POST("providers/{provider_id}/services")
+    suspend fun addProviderServiceRaw(
+        @Header("Authorization") authorization: String,
+        @Path("provider_id") providerId: Int,
+        @Body request: JsonObject
+    ): Response<JsonElement>
+    // UPDATE PROVIDER PROFILE
+    @PATCH("providers/{provider_id}")
+    suspend fun updateProviderRaw(
+        @Header("Authorization") authorization: String,
+        @Path("provider_id") providerId: Int,
+        @Body request: JsonObject
+    ): Response<JsonElement>
+
+    // UPDATE PROVIDER SERVICE
+    @PATCH("providers/{provider_id}/services/{service_id}")
+    suspend fun updateProviderServiceRaw(
+        @Header("Authorization") authorization: String,
+        @Path("provider_id") providerId: Int,
+        @Path("service_id") serviceId: Int,
+        @Body request: JsonObject
+    ): Response<JsonElement>
+
+    // DELETE PROVIDER SERVICE
+    @DELETE("providers/{provider_id}/services/{service_id}")
+    suspend fun deleteProviderServiceRaw(
+        @Header("Authorization") authorization: String,
+        @Path("provider_id") providerId: Int,
+        @Path("service_id") serviceId: Int
+    ): Response<JsonElement>
     // =========================
     // BOOKINGS
     // =========================
@@ -100,6 +136,7 @@ interface ApiService {
 
     @POST("restaurants/{provider_id}/tables")
     suspend fun createRestaurantTable(
+        @Header("Authorization") authorization: String,
         @Path("provider_id") providerId: Int,
         @Body request: JsonObject
     ): Response<JsonElement>
@@ -116,12 +153,14 @@ interface ApiService {
 
     @PATCH("restaurants/tables/{table_id}")
     suspend fun updateRestaurantTable(
+        @Header("Authorization") authorization: String,
         @Path("table_id") tableId: Int,
         @Body request: JsonObject
     ): Response<JsonElement>
 
     @DELETE("restaurants/tables/{table_id}")
     suspend fun deleteRestaurantTable(
+        @Header("Authorization") authorization: String,
         @Path("table_id") tableId: Int
     ): Response<JsonElement>
 
@@ -131,6 +170,7 @@ interface ApiService {
 
     @POST("restaurants/{provider_id}/menu")
     suspend fun createMenuItem(
+        @Header("Authorization") authorization: String,
         @Path("provider_id") providerId: Int,
         @Body request: JsonObject
     ): Response<JsonElement>
@@ -147,12 +187,14 @@ interface ApiService {
 
     @PATCH("restaurants/menu/{item_id}")
     suspend fun updateMenuItem(
+        @Header("Authorization") authorization: String,
         @Path("item_id") itemId: Int,
         @Body request: JsonObject
     ): Response<JsonElement>
 
     @DELETE("restaurants/menu/{item_id}")
     suspend fun deleteMenuItem(
+        @Header("Authorization") authorization: String,
         @Path("item_id") itemId: Int
     ): Response<JsonElement>
 

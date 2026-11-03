@@ -52,3 +52,23 @@ class ProviderOut(BaseModel):
 
 class ProviderDetailOut(ProviderOut):
     services: list[ServiceOut] = []
+
+
+
+class ProviderUpdate(BaseModel):
+    name: str | None = None
+    category: ProviderCategory | None = None
+    description: str | None = None
+    specialization: str | None = None
+    city: str | None = None
+    address: str | None = None
+    latitude: float | None = None
+    longitude: float | None = None
+
+
+class ServiceUpdate(BaseModel):
+    name: str | None = None
+    price: float | None = None
+    capacity: int | None = None
+    duration_minutes: int | None = None
+    total_units: int | None = None

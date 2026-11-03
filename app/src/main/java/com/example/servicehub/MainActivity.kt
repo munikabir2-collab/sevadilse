@@ -354,9 +354,10 @@ private fun ProviderDashboard(
         add(DashboardItem("Hotels", "Hotel bookings", "🏨"))
         add(DashboardItem("Appointments", "Doctor appointments", "🩺"))
         add(DashboardItem("Services", "Manage services", "🛎️"))
+        add(DashboardItem("Restaurant", "Manage menu and tables", "🍽️"))
         add(DashboardItem("Payments", "Payments and earnings", "💰"))
         add(DashboardItem("Profile", "Provider profile", "👤"))
-        add(DashboardItem("Settings", "Application settings", "⚙️"))
+        add(DashboardItem("Settings", "Provider profile and settings", "⚙️"))
 
         if (isAdmin) {
             add(DashboardItem("Admin", "Administration", "🛡️"))
@@ -374,7 +375,7 @@ private fun ProviderDashboard(
 
         topBar = {
 
-            TopAppBar(
+            if (selectedItem != "Restaurant") TopAppBar(
 
                 title = {
 
@@ -475,7 +476,7 @@ private fun ProviderDashboard(
 
         bottomBar = {
 
-            NavigationBar(
+            if (selectedItem != "Restaurant") NavigationBar(
                 containerColor = MaterialTheme.colorScheme.surface,
                 tonalElevation = 8.dp
             ) {
@@ -535,28 +536,27 @@ private fun ProviderDashboard(
                 modifier = Modifier.padding(paddingValues)
             )
 
-            "Hotels" -> ModuleScreen(
-                title = "Hotel Bookings",
-                emoji = "🏨",
-                description = "Manage hotel booking requests.",
+            "Hotels" -> HotelRoomsScreen(
+                tokenManager = tokenManager,
                 onBack = backToDashboard,
                 modifier = Modifier.padding(paddingValues)
             )
 
-            "Appointments" -> ModuleScreen(
-                title = "Appointments",
-                emoji = "🩺",
-                description = "Manage doctor appointments.",
+            "Appointments" -> DoctorSlotsScreen(
+                tokenManager = tokenManager,
                 onBack = backToDashboard,
                 modifier = Modifier.padding(paddingValues)
             )
 
-            "Services" -> ModuleScreen(
-                title = "Services",
-                emoji = "🛎️",
-                description = "Manage your listed services.",
+            "Services" -> ServicesScreen(
+                tokenManager = tokenManager,
                 onBack = backToDashboard,
                 modifier = Modifier.padding(paddingValues)
+            )
+
+            "Restaurant" -> RestaurantScreen(
+                tokenManager = tokenManager,
+                onBack = backToDashboard
             )
 
             "Payments" -> PayoutStatusScreen(
@@ -571,10 +571,8 @@ private fun ProviderDashboard(
                 modifier = Modifier.padding(paddingValues)
             )
 
-            "Settings" -> ModuleScreen(
-                title = "Settings",
-                emoji = "⚙️",
-                description = "Manage your application settings.",
+            "Settings" -> ProviderSetupScreen(
+                tokenManager = tokenManager,
                 onBack = backToDashboard,
                 modifier = Modifier.padding(paddingValues)
             )
