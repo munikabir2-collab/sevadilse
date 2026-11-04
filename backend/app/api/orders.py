@@ -235,7 +235,45 @@ def list_user_orders(
         .all()
     )
 
+# ---------------------------------------------------------
+# LIST CURRENT PROVIDER ORDERS
+# Provider owner only
+# ---------------------------------------------------------
+@router.get(
+    "/provider/me",
+    response_model=list[OrderOut],
+)
+def list_provider_orders(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    if not current_user.is_provider:
+        raise HTTPException(
+            status_code=403,
+            detail="Provider access required",
+        )
 
+    provider = (
+        db.query(Provider)
+        .filter(
+            Provider.owner_id == current_user.id,
+            Provider.category == ProviderCategory.restaurant,
+        )
+        .first()
+    )
+
+    if not provider:
+        raise HTTPException(
+            status_code=404,
+            detail="Restaurant provider profile nahi mila",
+        )
+
+    return (
+        db.query(RestaurantOrder)
+        .filter(RestaurantOrder.provider_id == provider.id)
+        .order_by(RestaurantOrder.created_at.desc())
+        .all()
+    )
 # ---------------------------------------------------------
 # GET SINGLE ORDER
 # ---------------------------------------------------------
