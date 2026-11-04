@@ -522,14 +522,11 @@ private fun ProviderDashboard(
                 modifier = Modifier.padding(paddingValues)
             )
 
-            "Orders" -> ModuleScreen(
-                title = "Orders",
-                emoji = "📦",
-                description = "Manage your customer orders.",
+            "Orders" -> ProviderOrdersScreen(
+                tokenManager = tokenManager,
                 onBack = backToDashboard,
                 modifier = Modifier.padding(paddingValues)
             )
-
             "Bookings" -> MyBookingsScreen(
                 tokenManager = tokenManager,
                 onBack = backToDashboard,
@@ -568,6 +565,10 @@ private fun ProviderDashboard(
             "Profile" -> ProfileScreen(
                 user = user,
                 onBack = backToDashboard,
+                onBecomeProvider = {
+                    selectedItem = "Settings"
+                    message = ""
+                },
                 modifier = Modifier.padding(paddingValues)
             )
 
@@ -922,9 +923,9 @@ private fun ModuleScreen(
 private fun ProfileScreen(
     user: UserResponse?,
     onBack: () -> Unit,
+    onBecomeProvider: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -945,13 +946,26 @@ private fun ProfileScreen(
 
         Spacer(modifier = Modifier.height(20.dp))
 
-        ProfileRow(title = "Name", value = user?.name ?: "-")
-        ProfileRow(title = "Email", value = user?.email ?: "-")
-        ProfileRow(title = "Phone", value = user?.phone ?: "-")
+        ProfileRow(
+            title = "Name",
+            value = user?.name ?: "-"
+        )
+
+        ProfileRow(
+            title = "Email",
+            value = user?.email ?: "-"
+        )
+
+        ProfileRow(
+            title = "Phone",
+            value = user?.phone ?: "-"
+        )
+
         ProfileRow(
             title = "Provider",
             value = if (user?.isProvider == true) "Yes" else "No"
         )
+
         ProfileRow(
             title = "Admin",
             value = if (user?.isAdmin == true) "Yes" else "No"
@@ -960,6 +974,21 @@ private fun ProfileScreen(
         Spacer(modifier = Modifier.height(24.dp))
 
         Button(
+            onClick = onBecomeProvider,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text(
+                if (user?.isProvider == true) {
+                    "Manage Provider Profile"
+                } else {
+                    "Become a Service Provider"
+                }
+            )
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        OutlinedButton(
             onClick = onBack,
             modifier = Modifier.fillMaxWidth()
         ) {
@@ -967,7 +996,6 @@ private fun ProfileScreen(
         }
     }
 }
-
 
 /* ============================================================
    PROFILE ROW
