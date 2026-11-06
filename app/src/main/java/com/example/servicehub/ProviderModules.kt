@@ -29,6 +29,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -112,6 +113,7 @@ private fun ScreenHeader(title: String, subtitle: String) {
    POST providers/{id}/services      -> add service (token needed)
    ============================================================ */
 
+
 @Composable
 fun ServicesScreen(
     tokenManager: TokenManager,
@@ -125,27 +127,37 @@ fun ServicesScreen(
     var saving by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf("") }
     var reload by remember { mutableStateOf(0) }
-
     var name by remember { mutableStateOf("") }
     var price by remember { mutableStateOf("") }
     var capacity by remember { mutableStateOf("1") }
     var duration by remember { mutableStateOf("") }
     var units by remember { mutableStateOf("1") }
 
+    var editingServiceId by remember { mutableStateOf<Int?>(null) }
+    var deleteConfirmId by remember { mutableStateOf<Int?>(null) }
+
     LaunchedEffect(reload) {
         loading = true
+
         try {
             val pid = currentProviderId(tokenManager)
+
             if (pid == null) {
-                message = "Provider ID nahi mila. Logout karke dobara login karein."
+                message = "Provider ID nahi mila. Dobara login karein."
             } else {
                 val r = RetrofitClient.api.getProviderRaw(pid)
+
                 if (r.isSuccessful) {
                     val obj = r.body()
+
                     services =
-                        if (obj != null && obj.isJsonObject)
+                        if (obj != null && obj.isJsonObject) {
                             obj.asJsonObject.get("services").asArr().objects()
-                        else emptyList()
+                        } else {
+                            emptyList()
+                        }
+
+                    message = ""
                 } else {
                     message = errText(r)
                 }
@@ -153,7 +165,17 @@ fun ServicesScreen(
         } catch (e: Exception) {
             message = "Network error: ${e.message ?: ""}"
         }
+
         loading = false
+    }
+
+    fun resetForm() {
+        name = ""
+        price = ""
+        capacity = "1"
+        duration = ""
+        units = "1"
+        editingServiceId = null
     }
 
     LazyColumn(
@@ -165,29 +187,143 @@ fun ServicesScreen(
 
         item {
             Spacer(Modifier.height(12.dp))
-            ScreenHeader("🛎️ Services", "Aapki listed services")
+            ScreenHeader("Services", "Aapki listed services")
         }
 
         if (loading) {
-            item { CircularProgressIndicator(Modifier.size(28.dp)) }
+            item {
+                CircularProgressIndicator(Modifier.size(28.dp))
+            }
         } else if (services.isEmpty()) {
-            item { Text("Abhi koi service nahi hai. Neeche se jodein.") }
+            item {
+                Text("Abhi koi service nahi hai. Neeche se jodein.")
+            }
         }
 
         items(services) { s ->
+
+            val serviceId = s.get("id")?.asInt ?: -1
+
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(16.dp)
             ) {
-                Column(Modifier.padding(14.dp)) {
+                Column(
+                    Modifier.padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+
                     Text(
                         s.text("name"),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold
                     )
-                    Text("₹${s.text("price")}  •  capacity ${s.text("capacity")}  •  units ${s.text("total_units")}")
+
+                    Text(
+                        "Rs. ${s.text("price")}  |  Capacity: ${s.text("capacity")}  |  Units: ${s.text("total_units")}"
+                    )
+
                     if (s.text("duration_minutes").isNotBlank()) {
                         Text("Duration: ${s.text("duration_minutes")} min")
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+
+                        OutlinedButton(
+                            onClick = {
+                                name = s.text("name")
+                                price = s.text("price")
+                                capacity = s.text("capacity").ifBlank { "1" }
+                                duration = s.text("duration_minutes")
+                                units = s.text("total_units").ifBlank { "1" }
+
+                                editingServiceId = serviceId
+                                deleteConfirmId = null
+                                message = "Service edit karein."
+                            },
+                            enabled = !saving && serviceId > 0,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text("Edit")
+                        }
+
+                        OutlinedButton(
+                            onClick = {
+                                deleteConfirmId = serviceId
+                                editingServiceId = null
+                            },
+                            enabled = !saving && serviceId > 0,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text("Delete")
+                        }
+                    }
+
+                    if (deleteConfirmId == serviceId) {
+
+                        Text(
+                            "Kya aap is service ko delete karna chahte hain?",
+                            color = MaterialTheme.colorScheme.error
+                        )
+
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+
+                            Button(
+                                onClick = {
+                                    scope.launch {
+                                        saving = true
+                                        message = ""
+
+                                        try {
+                                            val pid = currentProviderId(tokenManager)
+                                            val token = tokenManager.token.first()
+
+                                            if (pid == null || token.isNullOrBlank()) {
+                                                message = "Login dobara karein."
+                                            } else {
+                                                val r = RetrofitClient.api.deleteProviderServiceRaw(
+                                                    "Bearer $token",
+                                                    pid,
+                                                    serviceId
+                                                )
+
+                                                if (r.isSuccessful) {
+                                                    message = "Service delete ho gayi."
+                                                    deleteConfirmId = null
+                                                    reload++
+                                                } else {
+                                                    message = errText(r)
+                                                }
+                                            }
+                                        } catch (e: Exception) {
+                                            message = "Network error: ${e.message ?: ""}"
+                                        }
+
+                                        saving = false
+                                    }
+                                },
+                                enabled = !saving,
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = MaterialTheme.colorScheme.error
+                                )
+                            ) {
+                                Text(if (saving) "Deleting..." else "Haan, Delete")
+                            }
+
+                            OutlinedButton(
+                                onClick = {
+                                    deleteConfirmId = null
+                                },
+                                enabled = !saving
+                            ) {
+                                Text("Cancel")
+                            }
+                        }
                     }
                 }
             }
@@ -198,53 +334,134 @@ fun ServicesScreen(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(16.dp)
             ) {
-                Column(Modifier.padding(14.dp)) {
-                    Text("Nayi service jodein", fontWeight = FontWeight.Bold)
+
+                Column(
+                    Modifier.padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+
+                    Text(
+                        if (editingServiceId != null) {
+                            "Service update karein"
+                        } else {
+                            "Nayi service jodein"
+                        },
+                        fontWeight = FontWeight.Bold
+                    )
+
                     Field("Naam *", name, { name = it })
-                    Field("Price (₹) *", price, { price = it }, numeric = true)
-                    Field("Capacity", capacity, { capacity = it }, numeric = true)
-                    Field("Duration (minutes, optional)", duration, { duration = it }, numeric = true)
-                    Field("Total units", units, { units = it }, numeric = true)
+
+                    Field(
+                        "Price (Rs.) *",
+                        price,
+                        { price = it },
+                        numeric = true
+                    )
+
+                    Field(
+                        "Capacity",
+                        capacity,
+                        { capacity = it },
+                        numeric = true
+                    )
+
+                    Field(
+                        "Duration (minutes, optional)",
+                        duration,
+                        { duration = it },
+                        numeric = true
+                    )
+
+                    Field(
+                        "Total units",
+                        units,
+                        { units = it },
+                        numeric = true
+                    )
 
                     Button(
                         onClick = {
+
                             val p = price.toDoubleOrNull()
-                            if (name.isBlank() || p == null) {
+                            val c = capacity.toIntOrNull()
+                            val u = units.toIntOrNull()
+                            val d = duration.toIntOrNull()
+
+                            if (name.isBlank() || p == null || p < 0) {
                                 message = "Naam aur sahi price zaroori hai."
                                 return@Button
                             }
+
+                            if (c == null || c < 1 || u == null || u < 1) {
+                                message = "Capacity aur units kam se kam 1 honi chahiye."
+                                return@Button
+                            }
+
+                            if (duration.isNotBlank() && (d == null || d < 1)) {
+                                message = "Duration sahi enter karein."
+                                return@Button
+                            }
+
                             scope.launch {
                                 saving = true
                                 message = ""
+
                                 try {
                                     val pid = currentProviderId(tokenManager)
                                     val token = tokenManager.token.first()
+
                                     if (pid == null || token.isNullOrBlank()) {
                                         message = "Login dobara karein."
                                     } else {
+
                                         val body = JsonObject().apply {
                                             addProperty("name", name.trim())
                                             addProperty("price", p)
-                                            capacity.toIntOrNull()?.let { addProperty("capacity", it) }
-                                            duration.toIntOrNull()?.let { addProperty("duration_minutes", it) }
-                                            units.toIntOrNull()?.let { addProperty("total_units", it) }
+                                            addProperty("capacity", c)
+                                            addProperty("total_units", u)
+
+                                            if (d != null) {
+                                                addProperty("duration_minutes", d)
+                                            }
                                         }
-                                        val r = RetrofitClient.api.addProviderServiceRaw(
-                                            "Bearer $token", pid, body
-                                        )
+
+                                        val editId = editingServiceId
+
+                                        val r = if (editId != null) {
+                                            RetrofitClient.api.updateProviderServiceRaw(
+                                                "Bearer $token",
+                                                pid,
+                                                editId,
+                                                body
+                                            )
+                                        } else {
+                                            RetrofitClient.api.addProviderServiceRaw(
+                                                "Bearer $token",
+                                                pid,
+                                                body
+                                            )
+                                        }
+
                                         if (r.isSuccessful) {
-                                            message = "Service add ho gayi."
-                                            name = ""
-                                            price = ""
-                                            duration = ""
-                                            reload++
+
+                                            message = if (editId != null) {
+                                                "Service update ho gayi."
+                                            } else {
+                                                "Service add ho gayi."
+                                            }
+
+                                            resetForm()
+                                            reload = reload + 1
+
                                         } else {
                                             message = errText(r)
                                         }
                                     }
+
                                 } catch (e: Exception) {
                                     message = "Network error: ${e.message ?: ""}"
                                 }
+
                                 saving = false
                             }
                         },
@@ -253,14 +470,38 @@ fun ServicesScreen(
                             .fillMaxWidth()
                             .padding(top = 12.dp)
                     ) {
-                        Text(if (saving) "Saving..." else "Add service")
+                        Text(
+                            when {
+                                saving -> "Saving..."
+                                editingServiceId != null -> "Update Service"
+                                else -> "Add Service"
+                            }
+                        )
+                    }
+
+                    if (editingServiceId != null) {
+                        OutlinedButton(
+                            onClick = {
+                                resetForm()
+                                message = "Edit cancel ho gaya."
+                            },
+                            enabled = !saving,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("Cancel Edit")
+                        }
                     }
                 }
             }
         }
 
         if (message.isNotBlank()) {
-            item { Text(message, color = MaterialTheme.colorScheme.primary) }
+            item {
+                Text(
+                    message,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
         }
 
         item {
@@ -269,11 +510,12 @@ fun ServicesScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(bottom = 20.dp)
-            ) { Text("← Back to Dashboard") }
+            ) {
+                Text("Back to Dashboard")
+            }
         }
     }
 }
-
 
 /* ============================================================
    HOTEL ROOMS

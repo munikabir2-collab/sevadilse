@@ -171,3 +171,173 @@ def add_service(
         )
 
     return db_service
+
+
+
+# ============================================================
+# PROVIDER PROFILE UPDATE
+# ============================================================
+
+@router.patch("/{provider_id}", response_model=ProviderOut)
+def update_provider(
+    provider_id: int,
+    payload: ProviderUpdate,
+    current_user=Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    provider = (
+        db.query(Provider)
+        .filter(Provider.id == provider_id)
+        .first()
+    )
+
+    if not provider:
+        raise HTTPException(status_code=404, detail="Provider nahi mila")
+
+    if provider.owner_id != current_user.id and not current_user.is_admin:
+        raise HTTPException(status_code=403, detail="Permission denied")
+
+    updates = payload.model_dump(exclude_unset=True)
+
+    if not updates:
+        raise HTTPException(status_code=400, detail="Update data required")
+
+    for field in ("name", "category", "city"):
+        if field in updates and updates[field] is None:
+            raise HTTPException(
+                status_code=400,
+                detail=f"{field} empty nahi ho sakta",
+            )
+
+    for key, value in updates.items():
+        setattr(provider, key, value)
+
+    try:
+        db.commit()
+        db.refresh(provider)
+    except Exception:
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Provider update failed")
+
+    return provider
+
+
+# ============================================================
+# SERVICE UPDATE
+# ============================================================
+
+@router.patch("/{provider_id}/services/{service_id}", response_model=ServiceOut)
+def update_provider_service(
+    provider_id: int,
+    service_id: int,
+    payload: ServiceUpdate,
+    current_user=Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    provider = (
+        db.query(Provider)
+        .filter(Provider.id == provider_id)
+        .first()
+    )
+
+    if not provider:
+        raise HTTPException(status_code=404, detail="Provider nahi mila")
+
+    if provider.owner_id != current_user.id and not current_user.is_admin:
+        raise HTTPException(status_code=403, detail="Permission denied")
+
+    service = (
+        db.query(Service)
+        .filter(
+            Service.id == service_id,
+            Service.provider_id == provider_id,
+        )
+        .first()
+    )
+
+    if not service:
+        raise HTTPException(status_code=404, detail="Service nahi mili")
+
+    updates = payload.model_dump(exclude_unset=True)
+
+    if not updates:
+        raise HTTPException(status_code=400, detail="Update data required")
+
+    for field in ("name", "price", "capacity", "total_units"):
+        if field in updates and updates[field] is None:
+            raise HTTPException(
+                status_code=400,
+                detail=f"{field} empty nahi ho sakta",
+            )
+
+    for key, value in updates.items():
+        setattr(service, key, value)
+
+    try:
+        db.commit()
+        db.refresh(service)
+    except Exception:
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Service update failed")
+
+    return service
+
+
+# ============================================================
+# SERVICE DELETE
+# ============================================================
+
+@router.delete("/{provider_id}/services/{service_id}")
+def delete_provider_service(
+    provider_id: int,
+    service_id: int,
+    current_user=Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    provider = (
+        db.query(Provider)
+        .filter(Provider.id == provider_id)
+        .first()
+    )
+
+    if not provider:
+        raise HTTPException(status_code=404, detail="Provider nahi mila")
+
+    if provider.owner_id != current_user.id and not current_user.is_admin:
+        raise HTTPException(status_code=403, detail="Permission denied")
+
+    service = (
+        db.query(Service)
+        .filter(
+            Service.id == service_id,
+            Service.provider_id == provider_id,
+        )
+        .first()
+    )
+
+    if not service:
+        raise HTTPException(status_code=404, detail="Service nahi mili")
+
+    existing_booking = (
+        db.query(Booking)
+        .filter(Booking.service_id == service_id)
+        .first()
+    )
+
+    if existing_booking:
+        raise HTTPException(
+            status_code=409,
+            detail="Is service par booking history hai. Service delete nahi kar sakte.",
+        )
+
+    try:
+        db.delete(service)
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Service delete failed")
+
+    return {
+        "message": "Service delete ho gayi",
+        "service_id": service_id,
+    }

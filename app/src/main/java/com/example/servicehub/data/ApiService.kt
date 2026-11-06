@@ -1,4 +1,4 @@
-﻿package com.example.servicehub.data
+package com.example.servicehub.data
 
 import com.google.gson.JsonElement
 import com.google.gson.JsonObject
@@ -212,6 +212,15 @@ interface ApiService {
         @Path("user_id") userId: Int
     ): Response<JsonElement>
 
+    // =========================
+    // PROVIDER FOOD ORDERS
+    // =========================
+
+    @GET("orders/provider/me")
+    suspend fun getProviderFoodOrders(
+        @Header("Authorization") authorization: String
+    ): Response<JsonElement>
+
     @GET("orders/{order_id}")
     suspend fun getFoodOrder(
         @Path("order_id") orderId: Int
@@ -219,6 +228,7 @@ interface ApiService {
 
     @PATCH("orders/{order_id}/status")
     suspend fun updateFoodOrderStatus(
+        @Header("Authorization") authorization: String,
         @Path("order_id") orderId: Int,
         @Body request: JsonObject
     ): Response<JsonElement>
