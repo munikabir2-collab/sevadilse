@@ -1,10 +1,15 @@
-from datetime import datetime
+﻿from datetime import datetime
+from typing import Optional
+
 from pydantic import BaseModel
 from app.models.booking_model import BookingStatus
 
 
 class BookingCreate(BaseModel):
-    user_id: int  # JWT aane tak manually pass karo
+    # Backward compatibility: purane clients user_id bhej sakte hain,
+    # lekin Backend is value par trust nahi karega.
+    user_id: Optional[int] = None
+
     service_id: int
     start_time: datetime
     end_time: datetime
@@ -24,6 +29,7 @@ class BookingOut(BaseModel):
 
     class Config:
         from_attributes = True
+
 
 class BookingStatusUpdate(BaseModel):
     status: BookingStatus
