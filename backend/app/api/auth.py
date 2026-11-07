@@ -160,16 +160,9 @@ def signup(
     return new_user
 
 
+
 # ============================================================
 # LOGIN - JSON
-# ============================================================
-# Existing frontend/mobile login.
-#
-# Request:
-# {
-#   "email": "...",
-#   "password": "..."
-# }
 # ============================================================
 
 @router.post(
@@ -193,6 +186,13 @@ def login(
             headers={
                 "WWW-Authenticate": "Bearer"
             },
+        )
+
+    # Inactive user login blocked
+    if not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Your account is inactive. Please contact support.",
         )
 
     if not verify_password(
@@ -237,15 +237,6 @@ def login(
 # ============================================================
 # OAUTH2 TOKEN LOGIN
 # ============================================================
-# Swagger UI ke Authorize button ke liye.
-#
-# Swagger internally:
-# username = email
-# password = password
-#
-# Content-Type:
-# application/x-www-form-urlencoded
-# ============================================================
 
 @router.post(
     "/token",
@@ -255,7 +246,6 @@ def token_login(
     form_data: OAuth2PasswordRequestForm = Depends(),
     db: Session = Depends(get_db),
 ):
-    # Swagger ka "username" field hum email ke liye use kar rahe hain.
     user = (
         db.query(User)
         .filter(User.email == form_data.username)
@@ -269,6 +259,13 @@ def token_login(
             headers={
                 "WWW-Authenticate": "Bearer"
             },
+        )
+
+    # Inactive user login blocked
+    if not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Your account is inactive. Please contact support.",
         )
 
     if not verify_password(
@@ -314,6 +311,7 @@ def token_login(
 # GET CURRENT USER
 # ============================================================
 
+
 def get_current_user(
     token: str = Depends(oauth2_scheme),
     db: Session = Depends(get_db),
@@ -352,8 +350,14 @@ def get_current_user(
     if user is None:
         raise credentials_exception
 
-    return user
+    # Block previously issued tokens for inactive users
+    if not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Your account is inactive. Please contact support.",
+        )
 
+    return user
 
 # ============================================================
 # CURRENT USER API

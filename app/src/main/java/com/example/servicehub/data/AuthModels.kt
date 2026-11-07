@@ -91,6 +91,18 @@ data class ProviderDetailResponse(
     val id: Int,
     val name: String,
     val category: String,
+    val description: String? = null,
+    val specialization: String? = null,
     val city: String,
+    val address: String? = null,
+    val latitude: Double? = null,
+    val longitude: Double? = null,
+
+    @SerializedName("avg_rating")
+    val avgRating: Double? = null,
+
+    @SerializedName("total_reviews")
+    val totalReviews: Int? = null,
+
     val services: List<ServiceResponse> = emptyList()
 )

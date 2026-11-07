@@ -474,12 +474,20 @@ interface ApiService {
         @Body request: JsonObject
     ): Response<JsonElement>
 
-    // =========================
+       // =========================
     // ADMIN
     // =========================
 
     @GET("admin/dashboard/stats")
     suspend fun getAdminDashboardStats(
         @Header("Authorization") authorization: String
+    ): Response<JsonElement>
+
+    @GET("admin/{resource}")
+    suspend fun getAdminList(
+        @Header("Authorization") authorization: String,
+        @Path("resource") resource: String,
+        @Query("limit") limit: Int = 30,
+        @Query("offset") offset: Int = 0
     ): Response<JsonElement>
 }

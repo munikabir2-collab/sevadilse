@@ -1,7 +1,8 @@
 
-from sqlalchemy import Column, Integer, String, Boolean
+from sqlalchemy import Column, Integer, String, Boolean, text
 from app.core.database import Base
 from sqlalchemy.orm import synonym
+
 
 class User(Base):
     __tablename__ = "users"
@@ -14,3 +15,4 @@ class User(Base):
     phone = Column(String, nullable=True)
     is_provider = Column(Boolean, default=False)
     is_admin = Column(Boolean, default=False)
+    is_active = Column(Boolean, nullable=False, default=True, server_default=text("true"))

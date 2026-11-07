@@ -1,12 +1,12 @@
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
+
 from app.models.booking_model import Booking
 from app.core.database import get_db
 from app.api.auth import get_current_user
 from app.models.provider_model import Provider, ProviderCategory
 from app.models.service_model import Service
-
 
 from app.schemas.provider_schema import (
     ProviderCreate,
@@ -22,6 +22,24 @@ router = APIRouter(prefix="/providers", tags=["Providers"])
 
 
 # ============================================================
+# PROVIDER SERVICE ELIGIBILITY CHECK
+# ============================================================
+
+def _ensure_provider_can_manage_services(provider: Provider):
+    if provider.verification_status != "approved":
+        raise HTTPException(
+            status_code=403,
+            detail="Provider verification approved nahi hai. Service manage nahi kar sakte.",
+        )
+
+    if not provider.is_active:
+        raise HTTPException(
+            status_code=403,
+            detail="Provider suspended hai. Service manage nahi kar sakte.",
+        )
+
+
+# ============================================================
 # CREATE PROVIDER - JWT AUTHENTICATED
 # ============================================================
 
@@ -31,7 +49,6 @@ def create_provider(
     current_user=Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    # Check whether this user already has a provider profile
     existing_provider = (
         db.query(Provider)
         .filter(Provider.owner_id == current_user.id)
@@ -44,13 +61,11 @@ def create_provider(
             detail="Is account ka Provider profile pehle se bana hua hai",
         )
 
-    # Create provider using authenticated user's ID
     db_provider = Provider(
         owner_id=current_user.id,
         **provider.model_dump(),
     )
 
-    # Update role and create provider in the same transaction
     current_user.is_provider = True
     db.add(db_provider)
 
@@ -121,7 +136,7 @@ def get_provider(
 
 
 # ============================================================
-# ADD SERVICE - OWNER OR ADMIN ONLY
+# ADD SERVICE - APPROVED ACTIVE OWNER OR ADMIN ONLY
 # ============================================================
 
 @router.post("/{provider_id}/services", response_model=ServiceOut)
@@ -143,7 +158,8 @@ def add_service(
             detail="Provider nahi mila",
         )
 
-    # Only provider owner or admin can add services
+    _ensure_provider_can_manage_services(provider)
+
     if (
         provider.owner_id != current_user.id
         and not current_user.is_admin
@@ -171,7 +187,6 @@ def add_service(
         )
 
     return db_service
-
 
 
 # ============================================================
@@ -242,6 +257,8 @@ def update_provider_service(
 
     if not provider:
         raise HTTPException(status_code=404, detail="Provider nahi mila")
+
+    _ensure_provider_can_manage_services(provider)
 
     if provider.owner_id != current_user.id and not current_user.is_admin:
         raise HTTPException(status_code=403, detail="Permission denied")

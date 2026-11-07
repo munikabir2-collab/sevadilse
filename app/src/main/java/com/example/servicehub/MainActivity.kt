@@ -1,4 +1,4 @@
-﻿@file:OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+@file:OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 
 package com.example.servicehub
 
@@ -335,11 +335,12 @@ private fun ProviderDashboard(
 ) {
 
     var selectedItem by remember { mutableStateOf("Dashboard") }
+    var selectedAdminModule by remember { mutableStateOf("") }
 
     // FIX: Phone Back button -> module screen se Dashboard par wapas.
     // Dashboard par Back dabane par app normal tarah band hoga.
     BackHandler(enabled = selectedItem != "Dashboard") {
-        selectedItem = "Dashboard"
+        selectedItem = if (selectedItem == "AdminModule") "Admin" else "Dashboard"
     }
 
     var isRefreshing by remember { mutableStateOf(false) }
@@ -349,26 +350,26 @@ private fun ProviderDashboard(
 
     val dashboardItems = buildList {
 
-        add(DashboardItem("Orders", "Manage customer orders", "📦"))
-        add(DashboardItem("Bookings", "View customer bookings", "📅"))
-        add(DashboardItem("Hotels", "Hotel bookings", "🏨"))
-        add(DashboardItem("Appointments", "Doctor appointments", "🩺"))
-        add(DashboardItem("Services", "Manage services", "🛎️"))
-        add(DashboardItem("Restaurant", "Manage menu and tables", "🍽️"))
-        add(DashboardItem("Payments", "Payments and earnings", "💰"))
-        add(DashboardItem("Profile", "Provider profile", "👤"))
-        add(DashboardItem("Settings", "Provider profile and settings", "⚙️"))
+        add(DashboardItem("Orders", "Manage customer orders", "\uD83D\uDCE6"))
+        add(DashboardItem("Bookings", "View customer bookings", "\uD83D\uDCC5"))
+        add(DashboardItem("Hotels", "Hotel bookings", "\uD83C\uDFE8"))
+        add(DashboardItem("Appointments", "Doctor appointments", "\uD83E\uDE7A"))
+        add(DashboardItem("Services", "Manage services", "\uD83D\uDEE0\uFE0F"))
+        add(DashboardItem("Restaurant", "Manage menu and tables", "\uD83C\uDF7D\uFE0F"))
+        add(DashboardItem("Payments", "Payments and earnings", "\uD83D\uDCB0"))
+        add(DashboardItem("Profile", "Provider profile", "\uD83D\uDC64"))
+        add(DashboardItem("Settings", "Provider profile and settings", "\u2699\uFE0F"))
 
         if (isAdmin) {
-            add(DashboardItem("Admin", "Administration", "🛡️"))
+            add(DashboardItem("Admin", "Administration", "\uD83D\uDEE1\uFE0F"))
         }
     }
 
     val navigationItems = listOf(
-        BottomNavigationItem("Dashboard", "Home", "🏠"),
-        BottomNavigationItem("Orders", "Orders", "📦"),
-        BottomNavigationItem("Bookings", "Bookings", "📅"),
-        BottomNavigationItem("Profile", "Profile", "👤")
+        BottomNavigationItem("Dashboard", "Home", "\uD83C\uDFE0"),
+        BottomNavigationItem("Orders", "Orders", "\uD83D\uDCE6"),
+        BottomNavigationItem("Bookings", "Bookings", "\uD83D\uDCC5"),
+        BottomNavigationItem("Profile", "Profile", "\uD83D\uDC64")
     )
 
     Scaffold(
@@ -461,7 +462,7 @@ private fun ProviderDashboard(
                         } else {
 
                             Text(
-                                text = "↻",
+                                text = "\u21BB",
                                 style = MaterialTheme.typography.headlineSmall
                             )
                         }
@@ -564,6 +565,7 @@ private fun ProviderDashboard(
 
             "Profile" -> ProfileScreen(
                 user = user,
+                onSetupProfile = { selectedItem = "Settings" },
                 onBack = backToDashboard,
                 onBecomeProvider = {
                     selectedItem = "Settings"
@@ -579,7 +581,17 @@ private fun ProviderDashboard(
             )
 
             "Admin" -> AdminDashboardScreen(
+                tokenManager = tokenManager,
                 onBack = backToDashboard,
+                onSectionClick = { module ->
+                    selectedAdminModule = module
+                    selectedItem = "AdminModule"
+                },
+                modifier = Modifier.padding(paddingValues)
+            )
+            "AdminModule" -> AdminModuleLandingScreen(
+                title = selectedAdminModule,
+                onBack = { selectedItem = "Admin" },
                 modifier = Modifier.padding(paddingValues)
             )
         }
@@ -651,7 +663,7 @@ private fun DashboardHome(
                     Column(modifier = Modifier.weight(1f)) {
 
                         Text(
-                            text = "Welcome back 👋",
+                            text = "Welcome back \uD83D\uDC4B",
                             style = MaterialTheme.typography.labelLarge
                         )
 
@@ -681,14 +693,14 @@ private fun DashboardHome(
                         isProvider -> "Provider"
                         else -> "User"
                     },
-                    emoji = "✓",
+                    emoji = "\uD83D\uDC64",
                     modifier = Modifier.weight(1f)
                 )
 
                 StatCard(
                     title = "Status",
                     value = "Active",
-                    emoji = "●",
+                    emoji = "\uD83D\uDFE2",
                     modifier = Modifier.weight(1f)
                 )
             }
@@ -909,7 +921,7 @@ private fun ModuleScreen(
             onClick = onBack,
             modifier = Modifier.fillMaxWidth()
         ) {
-            Text("← Back to Dashboard")
+            Text("\u2190 Back to Dashboard")
         }
     }
 }
@@ -922,6 +934,7 @@ private fun ModuleScreen(
 @Composable
 private fun ProfileScreen(
     user: UserResponse?,
+    onSetupProfile: () -> Unit,
     onBack: () -> Unit,
     onBecomeProvider: () -> Unit,
     modifier: Modifier = Modifier
@@ -933,7 +946,7 @@ private fun ProfileScreen(
     ) {
 
         Text(
-            text = "👤",
+            text = "Profile",
             style = MaterialTheme.typography.displaySmall
         )
 
@@ -988,12 +1001,11 @@ private fun ProfileScreen(
 
         Spacer(modifier = Modifier.height(12.dp))
 
-        OutlinedButton(
-            onClick = onBack,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Text("← Back to Dashboard")
-        }
+        OutlinedButton(onClick = onSetupProfile, modifier = Modifier.fillMaxWidth()) { Text("Provider Profile Setup") }
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        OutlinedButton(onClick = onBack, modifier = Modifier.fillMaxWidth()) { Text("Back to Dashboard") }
     }
 }
 
