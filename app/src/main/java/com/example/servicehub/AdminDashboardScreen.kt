@@ -542,19 +542,118 @@ private fun AdminInfoRow(
         )
     }
 }
-
 @Composable
 fun AdminModuleLandingScreen(
     title: String,
+    tokenManager: TokenManager,
     onBack: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    var items by remember(title) {
+        mutableStateOf<List<JsonObject>>(emptyList())
+    }
+    var total by remember(title) {
+        mutableStateOf(0)
+    }
+    var isLoading by remember(title) {
+        mutableStateOf(true)
+    }
+    var errorMessage by remember(title) {
+        mutableStateOf("")
+    }
+
+    val scope = rememberCoroutineScope()
+
+    val resource = when (title) {
+        "User Management" -> "users"
+        "Provider Management" -> "provider-management"
+        "Booking Management" -> "bookings"
+        "Restaurant Orders" -> "orders"
+        "Payments" -> "payments"
+        "Reports & Analytics" -> "earnings"
+        else -> null
+    }
+
+    suspend fun loadData() {
+        if (resource == null) {
+            errorMessage = when (title) {
+                "Provider Payouts" ->
+                    "Payout listing API abhi available nahi hai."
+                "Admin Settings" ->
+                    "Admin Settings API abhi connect nahi hai."
+                else ->
+                    "Is module ka API available nahi hai."
+            }
+            isLoading = false
+            return
+        }
+
+        isLoading = true
+        errorMessage = ""
+
+        try {
+            val token = tokenManager.token.first()
+
+            if (token.isNullOrBlank()) {
+                errorMessage = "Login session nahi mila. Dobara login karein."
+                items = emptyList()
+                total = 0
+                return
+            }
+
+            val response = RetrofitClient.api.getAdminList(
+                authorization = "Bearer $token",
+                resource = resource,
+                limit = 30,
+                offset = 0
+            )
+
+            if (response.isSuccessful) {
+                val json = response.body()?.asJsonObject
+
+                if (json == null) {
+                    errorMessage = "Server se valid data nahi mila."
+                    items = emptyList()
+                    total = 0
+                } else {
+                    total = json.get("total")?.asInt ?: 0
+
+                    val array = json.get("items")?.asJsonArray
+
+                    items = array?.mapNotNull {
+                        if (it.isJsonObject) it.asJsonObject else null
+                    } ?: emptyList()
+                }
+            } else {
+                errorMessage = when (response.code()) {
+                    401 -> "Session expire ho gaya. Dobara login karein."
+                    403 -> "Admin permission nahi hai."
+                    404 -> "Backend API endpoint nahi mila."
+                    else -> "Data load failed: HTTP ${response.code()}"
+                }
+                items = emptyList()
+                total = 0
+            }
+        } catch (e: Exception) {
+            errorMessage = "Network error: ${e.message ?: "Please try again"}"
+            items = emptyList()
+            total = 0
+        } finally {
+            isLoading = false
+        }
+    }
+
+    LaunchedEffect(title, tokenManager) {
+        loadData()
+    }
+
     Column(
         modifier = modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
+            .verticalScroll(rememberScrollState())
             .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+        verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         Text(
             text = title,
@@ -562,16 +661,109 @@ fun AdminModuleLandingScreen(
             fontWeight = FontWeight.Bold
         )
 
-        Text(
-            text = "Admin module opened successfully. Is module ki data listing aur management actions agle implementation step mein connect honge.",
-            style = MaterialTheme.typography.bodyMedium
-        )
-
-        Button(
-            onClick = onBack,
-            modifier = Modifier.fillMaxWidth()
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Text("Back to Admin Dashboard")
+            Button(
+                onClick = onBack,
+                modifier = Modifier.weight(1f)
+            ) {
+                Text("Back")
+            }
+
+            OutlinedButton(
+                onClick = {
+                    scope.launch { loadData() }
+                },
+                enabled = !isLoading,
+                modifier = Modifier.weight(1f)
+            ) {
+                Text("Refresh")
+            }
+        }
+
+        if (resource != null) {
+            Text(
+                text = "Total records: $total",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold
+            )
+        }
+
+        if (isLoading) {
+            CircularProgressIndicator()
+            Text("Loading $title...")
+        }
+
+        if (errorMessage.isNotBlank()) {
+            Text(
+                text = errorMessage,
+                color = MaterialTheme.colorScheme.error,
+                style = MaterialTheme.typography.bodyMedium
+            )
+
+            Button(
+                onClick = {
+                    scope.launch { loadData() }
+                }
+            ) {
+                Text("Try Again")
+            }
+        }
+
+        if (!isLoading && errorMessage.isBlank() && resource != null) {
+            if (items.isEmpty()) {
+                Text("Abhi koi record available nahi hai.")
+            }
+
+            items.forEachIndexed { index, item ->
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surface
+                    )
+                ) {
+                    Column(
+                        modifier = Modifier.padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            text = "Record ${index + 1}",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+
+                        item.entrySet().forEach { entry ->
+                            val value = if (
+                                entry.value.isJsonNull
+                            ) {
+                                "—"
+                            } else {
+                                entry.value.toString()
+                                    .removeSurrounding("\"")
+                            }
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(
+                                    text = entry.key
+                                        .replace("_", " "),
+                                    fontWeight = FontWeight.Medium,
+                                    modifier = Modifier.weight(1f)
+                                )
+
+                                Text(
+                                    text = value,
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }

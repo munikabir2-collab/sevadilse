@@ -8,7 +8,9 @@ from sqlalchemy import func, or_
 from app.models.provider_earning_model import ProviderEarning
 from app.core.database import get_db
 from app.api.auth import get_current_user
-
+from decimal import Decimal
+from pydantic import BaseModel, Field
+from app.models.admin_settings_model import AdminSettings
 from app.models.user_model import User
 from app.models.provider_model import Provider
 from app.models.booking_model import Booking
@@ -825,4 +827,104 @@ def admin_update_provider_status(
             "is_active": provider.is_active,
             "verification_status": provider.verification_status,
         },
+    }
+
+# ============================================================
+# ADMIN SETTINGS
+# ============================================================
+
+class AdminSettingsUpdate(BaseModel):
+    platform_name: str | None = Field(default=None, min_length=1, max_length=150)
+    support_email: str | None = Field(default=None, max_length=255)
+    support_phone: str | None = Field(default=None, max_length=30)
+
+    customer_registration_enabled: bool | None = None
+    provider_registration_enabled: bool | None = None
+    booking_enabled: bool | None = None
+    maintenance_mode: bool | None = None
+
+    platform_commission_percent: Decimal | None = Field(
+        default=None,
+        ge=0,
+        le=100,
+    )
+
+
+def _admin_get_settings(db: Session):
+    settings = (
+        db.query(AdminSettings)
+        .filter(AdminSettings.id == 1)
+        .first()
+    )
+
+    if settings is None:
+        settings = AdminSettings(id=1)
+        db.add(settings)
+        db.commit()
+        db.refresh(settings)
+
+    return settings
+
+
+def _admin_settings_response(settings):
+    return _admin_row(
+        settings,
+        [
+            "id",
+            "platform_name",
+            "support_email",
+            "support_phone",
+            "customer_registration_enabled",
+            "provider_registration_enabled",
+            "booking_enabled",
+            "maintenance_mode",
+            "platform_commission_percent",
+            "updated_at",
+        ],
+    )
+
+
+@router.get("/settings")
+def admin_get_settings(
+    db: Session = Depends(get_db),
+    admin: User = Depends(_admin_require),
+):
+    settings = _admin_get_settings(db)
+
+    return _admin_settings_response(settings)
+
+
+@router.patch("/settings")
+def admin_update_settings(
+    payload: AdminSettingsUpdate,
+    db: Session = Depends(get_db),
+    admin: User = Depends(_admin_require),
+):
+    settings = _admin_get_settings(db)
+
+    updates = payload.dict(exclude_unset=True)
+
+    for key, value in updates.items():
+        if value is None and key not in ["support_email", "support_phone"]:
+            raise HTTPException(
+                status_code=400,
+                detail=f"{key} cannot be null",
+            )
+
+        setattr(settings, key, value)
+
+    try:
+        db.commit()
+        db.refresh(settings)
+
+    except Exception:
+        db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail="Admin settings update failed",
+        )
+
+    return {
+        "message": "Admin settings updated successfully",
+        "settings": _admin_settings_response(settings),
     }

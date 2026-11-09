@@ -126,7 +126,7 @@ class MainActivity : ComponentActivity() {
                                 // Use saved role only for offline access.
                                 isProvider = tokenManager.isProvider.first()
                                 isAdmin = tokenManager.isAdmin.first()
-                                isLoggedIn = isProvider || isAdmin
+                                isLoggedIn = true
                             }
                         }
 
@@ -172,13 +172,6 @@ class MainActivity : ComponentActivity() {
                                             isProvider = provider
                                             isAdmin = admin
 
-                                            if (!provider && !admin) {
-                                                tokenManager.clear()
-                                                currentUser = null
-                                                isLoggedIn = false
-                                                isCheckingLogin = false
-                                                return@launch
-                                            }
 
                                             try {
 
@@ -221,7 +214,7 @@ class MainActivity : ComponentActivity() {
 
                                                 // Login response confirmed the role.
                                                 // Keep session during temporary outage.
-                                                isLoggedIn = provider || admin
+                                                isLoggedIn = true
                                             }
 
                                             isCheckingLogin = false
@@ -591,6 +584,7 @@ private fun ProviderDashboard(
             )
             "AdminModule" -> AdminModuleLandingScreen(
                 title = selectedAdminModule,
+                tokenManager = tokenManager,
                 onBack = { selectedItem = "Admin" },
                 modifier = Modifier.padding(paddingValues)
             )

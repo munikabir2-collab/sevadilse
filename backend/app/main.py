@@ -41,6 +41,7 @@ from app.api import (
     doctors,
     payments,
     provider_payouts,
+    delivery,
 )
 
 
@@ -62,6 +63,8 @@ from app.models import (
     payment_model,
     provider_payout_model,
     provider_earning_model,
+    delivery_model,
+    admin_settings_model,
 )
 
 
@@ -147,6 +150,10 @@ app.include_router(doctors.appointment_router)
 
 app.include_router(payments.router)
 
+
+
+
+app.include_router(delivery.router)
 
 # ============================================================
 # DATABASE TABLE CREATION
