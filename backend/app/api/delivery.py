@@ -226,18 +226,17 @@ def delivery_me(
 ):
     staff = _staff_of(db, current_user)
 
-    if current_user.is_admin:
-        role = "main_admin"
-    elif staff:
-        role = staff.role.value
-    else:
-        role = "customer"
+    if not staff or staff.role != DeliveryStaffRole.delivery_boy:
+        raise HTTPException(
+            status_code=403,
+            detail="Access denied. Registered active delivery boy only.",
+        )
 
     return {
         "user_id": current_user.id,
-        "role": role,
-        "area": staff.area if staff else None,
-        "staff_id": staff.id if staff else None,
+        "role": "delivery_boy",
+        "area": staff.area,
+        "staff_id": staff.id,
     }
 
 
