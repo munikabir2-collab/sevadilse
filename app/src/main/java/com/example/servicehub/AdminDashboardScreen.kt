@@ -21,6 +21,8 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -71,8 +73,7 @@ private fun JsonObject.doubleOrZero(key: String): Double {
 }
 
 private fun formatInr(amount: Double): String {
-    return NumberFormat.getCurrencyInstance(Locale("en", "IN"))
-        .format(amount)
+    return NumberFormat.getCurrencyInstance(Locale("en", "IN")).format(amount)
 }
 
 @Composable
@@ -151,6 +152,7 @@ fun AdminDashboardScreen(
         AdminSection("₹", "Payments", "Online payments, COD and transactions"),
         AdminSection("PO", "Provider Payouts", "Payout onboarding and account status"),
         AdminSection("AN", "Reports & Analytics", "Revenue, commission and earnings"),
+        AdminSection("🚚", "Delivery Staff", "Register delivery boys and manage staff access"),
         AdminSection("⚙", "Admin Settings", "Platform administration")
     )
 
@@ -162,7 +164,6 @@ fun AdminDashboardScreen(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(18.dp)
     ) {
-        // Dashboard header
         Card(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(24.dp),
@@ -205,7 +206,6 @@ fun AdminDashboardScreen(
             }
         }
 
-        // Overview heading and refresh
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -232,7 +232,6 @@ fun AdminDashboardScreen(
             }
         }
 
-        // Loading state
         if (isLoading && stats == null) {
             Card(
                 modifier = Modifier.fillMaxWidth(),
@@ -251,7 +250,6 @@ fun AdminDashboardScreen(
             }
         }
 
-        // Error state
         if (errorMessage.isNotBlank()) {
             Card(
                 modifier = Modifier.fillMaxWidth(),
@@ -276,7 +274,6 @@ fun AdminDashboardScreen(
             }
         }
 
-        // Statistics cards
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -313,7 +310,6 @@ fun AdminDashboardScreen(
             )
         }
 
-        // Financial overview
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text(
                 text = "Financial Overview",
@@ -339,8 +335,6 @@ fun AdminDashboardScreen(
                         color = MaterialTheme.colorScheme.onSecondaryContainer
                     )
 
-                    Spacer(modifier = Modifier.height(2.dp))
-
                     AdminInfoRow(
                         "Paid Revenue",
                         stats?.let { formatInr(it.paidRevenue) } ?: formatInr(0.0)
@@ -365,7 +359,6 @@ fun AdminDashboardScreen(
             }
         }
 
-        // Administration modules
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text(
                 text = "Administration Modules",
@@ -460,8 +453,7 @@ private fun AdminModuleCard(
     onClick: () -> Unit
 ) {
     Card(
-        modifier = modifier
-            .clickable(onClick = onClick),
+        modifier = modifier.clickable(onClick = onClick),
         shape = RoundedCornerShape(18.dp),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surface
@@ -482,10 +474,7 @@ private fun AdminModuleCard(
             ) {
                 Text(
                     text = section.icon,
-                    modifier = Modifier.padding(
-                        horizontal = 12.dp,
-                        vertical = 9.dp
-                    ),
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
                     fontSize = 17.sp,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.primary
@@ -542,6 +531,7 @@ private fun AdminInfoRow(
         )
     }
 }
+
 @Composable
 fun AdminModuleLandingScreen(
     title: String,
@@ -549,6 +539,22 @@ fun AdminModuleLandingScreen(
     onBack: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    if (title == "Admin Settings") {
+        AdminSettingsScreen(
+            tokenManager = tokenManager,
+            onBack = onBack,
+            modifier = modifier
+        )
+        return
+    }
+if (title == "Delivery Staff") {
+    DeliveryStaffScreen(
+        tokenManager = tokenManager,
+        onBack = onBack,
+        modifier = modifier
+    )
+    return
+}
     var items by remember(title) {
         mutableStateOf<List<JsonObject>>(emptyList())
     }
@@ -579,8 +585,6 @@ fun AdminModuleLandingScreen(
             errorMessage = when (title) {
                 "Provider Payouts" ->
                     "Payout listing API abhi available nahi hai."
-                "Admin Settings" ->
-                    "Admin Settings API abhi connect nahi hai."
                 else ->
                     "Is module ka API available nahi hai."
             }
@@ -617,7 +621,6 @@ fun AdminModuleLandingScreen(
                     total = 0
                 } else {
                     total = json.get("total")?.asInt ?: 0
-
                     val array = json.get("items")?.asJsonArray
 
                     items = array?.mapNotNull {
@@ -673,9 +676,7 @@ fun AdminModuleLandingScreen(
             }
 
             OutlinedButton(
-                onClick = {
-                    scope.launch { loadData() }
-                },
+                onClick = { scope.launch { loadData() } },
                 enabled = !isLoading,
                 modifier = Modifier.weight(1f)
             ) {
@@ -703,11 +704,7 @@ fun AdminModuleLandingScreen(
                 style = MaterialTheme.typography.bodyMedium
             )
 
-            Button(
-                onClick = {
-                    scope.launch { loadData() }
-                }
-            ) {
+            Button(onClick = { scope.launch { loadData() } }) {
                 Text("Try Again")
             }
         }
@@ -735,13 +732,10 @@ fun AdminModuleLandingScreen(
                         )
 
                         item.entrySet().forEach { entry ->
-                            val value = if (
-                                entry.value.isJsonNull
-                            ) {
+                            val value = if (entry.value.isJsonNull) {
                                 "—"
                             } else {
-                                entry.value.toString()
-                                    .removeSurrounding("\"")
+                                entry.value.toString().removeSurrounding("\"")
                             }
 
                             Row(
@@ -749,8 +743,7 @@ fun AdminModuleLandingScreen(
                                 horizontalArrangement = Arrangement.SpaceBetween
                             ) {
                                 Text(
-                                    text = entry.key
-                                        .replace("_", " "),
+                                    text = entry.key.replace("_", " "),
                                     fontWeight = FontWeight.Medium,
                                     modifier = Modifier.weight(1f)
                                 )
@@ -765,5 +758,370 @@ fun AdminModuleLandingScreen(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun AdminSettingsScreen(
+    tokenManager: TokenManager,
+    onBack: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    var platformName by remember { mutableStateOf("") }
+    var supportEmail by remember { mutableStateOf("") }
+    var supportPhone by remember { mutableStateOf("") }
+    var commission by remember { mutableStateOf("0") }
+
+    var customerRegistration by remember { mutableStateOf(false) }
+    var providerRegistration by remember { mutableStateOf(false) }
+    var bookingEnabled by remember { mutableStateOf(false) }
+    var maintenanceMode by remember { mutableStateOf(false) }
+
+    var isLoading by remember { mutableStateOf(true) }
+    var isSaving by remember { mutableStateOf(false) }
+    var errorMessage by remember { mutableStateOf("") }
+    var successMessage by remember { mutableStateOf("") }
+
+    val scope = rememberCoroutineScope()
+
+    suspend fun loadSettings() {
+        isLoading = true
+        errorMessage = ""
+
+        try {
+            val token = tokenManager.token.first()
+
+            if (token.isNullOrBlank()) {
+                errorMessage = "Login session nahi mila. Dobara login karein."
+                return
+            }
+
+            val response = RetrofitClient.api.getAdminSettings(
+                authorization = "Bearer $token"
+            )
+
+            if (response.isSuccessful) {
+                val json = response.body()
+
+                if (json == null) {
+                    errorMessage = "Settings data nahi mila."
+                } else {
+                    platformName = json.get("platform_name")
+                        ?.takeUnless { it.isJsonNull }?.asString ?: ""
+
+                    supportEmail = json.get("support_email")
+                        ?.takeUnless { it.isJsonNull }?.asString ?: ""
+
+                    supportPhone = json.get("support_phone")
+                        ?.takeUnless { it.isJsonNull }?.asString ?: ""
+
+                    commission = json.get("platform_commission_percent")
+                        ?.takeUnless { it.isJsonNull }?.asString ?: "0"
+
+                    customerRegistration = json.get("customer_registration_enabled")
+                        ?.takeUnless { it.isJsonNull }?.asBoolean ?: false
+
+                    providerRegistration = json.get("provider_registration_enabled")
+                        ?.takeUnless { it.isJsonNull }?.asBoolean ?: false
+
+                    bookingEnabled = json.get("booking_enabled")
+                        ?.takeUnless { it.isJsonNull }?.asBoolean ?: false
+
+                    maintenanceMode = json.get("maintenance_mode")
+                        ?.takeUnless { it.isJsonNull }?.asBoolean ?: false
+                }
+            } else {
+                errorMessage = when (response.code()) {
+                    401 -> "Session expire ho gaya. Dobara login karein."
+                    403 -> "Admin permission nahi hai."
+                    else -> "Settings load failed: HTTP ${response.code()}"
+                }
+            }
+        } catch (e: Exception) {
+            errorMessage = "Network error: ${e.message ?: "Please try again"}"
+        } finally {
+            isLoading = false
+        }
+    }
+
+    suspend fun saveSettings() {
+        errorMessage = ""
+        successMessage = ""
+
+        val commissionValue = commission.toDoubleOrNull()
+
+        if (platformName.isBlank()) {
+            errorMessage = "Platform name required hai."
+            return
+        }
+
+        if (commissionValue == null || commissionValue !in 0.0..100.0) {
+            errorMessage = "Commission 0 se 100 ke beech hona chahiye."
+            return
+        }
+
+        isSaving = true
+
+        try {
+            val token = tokenManager.token.first()
+
+            if (token.isNullOrBlank()) {
+                errorMessage = "Login session nahi mila. Dobara login karein."
+                return
+            }
+
+            val request = JsonObject().apply {
+                addProperty("platform_name", platformName.trim())
+                addProperty("support_email", supportEmail.trim())
+                addProperty("support_phone", supportPhone.trim())
+                addProperty("customer_registration_enabled", customerRegistration)
+                addProperty("provider_registration_enabled", providerRegistration)
+                addProperty("booking_enabled", bookingEnabled)
+                addProperty("maintenance_mode", maintenanceMode)
+                addProperty("platform_commission_percent", commissionValue)
+            }
+
+            val response = RetrofitClient.api.updateAdminSettings(
+                authorization = "Bearer $token",
+                request = request
+            )
+
+            if (response.isSuccessful) {
+                successMessage = "Admin settings successfully save ho gayi hain."
+                loadSettings()
+                successMessage = "Admin settings successfully save ho gayi hain."
+            } else {
+                errorMessage = when (response.code()) {
+                    401 -> "Session expire ho gaya. Dobara login karein."
+                    403 -> "Admin permission nahi hai."
+                    422 -> "Settings data invalid hai. Values check karein."
+                    else -> "Settings save failed: HTTP ${response.code()}"
+                }
+            }
+        } catch (e: Exception) {
+            errorMessage = "Network error: ${e.message ?: "Please try again"}"
+        } finally {
+            isSaving = false
+        }
+    }
+
+    LaunchedEffect(tokenManager) {
+        loadSettings()
+    }
+
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+            .verticalScroll(rememberScrollState())
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
+        Text(
+            text = "Admin Settings",
+            style = MaterialTheme.typography.headlineSmall,
+            fontWeight = FontWeight.Bold
+        )
+
+        Text(
+            text = "Manage your ServiceHub platform configuration.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            OutlinedButton(
+                onClick = onBack,
+                modifier = Modifier.weight(1f)
+            ) {
+                Text("Back")
+            }
+
+            OutlinedButton(
+                onClick = { scope.launch { loadSettings() } },
+                enabled = !isLoading && !isSaving,
+                modifier = Modifier.weight(1f)
+            ) {
+                Text("Refresh")
+            }
+        }
+
+        if (isLoading) {
+            CircularProgressIndicator()
+            Text("Loading settings...")
+        }
+
+        if (!isLoading) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(18.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Text(
+                        text = "Platform Information",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+
+                    OutlinedTextField(
+                        value = platformName,
+                        onValueChange = { platformName = it },
+                        label = { Text("Platform Name") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
+                    )
+
+                    OutlinedTextField(
+                        value = supportEmail,
+                        onValueChange = { supportEmail = it },
+                        label = { Text("Support Email") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
+                    )
+
+                    OutlinedTextField(
+                        value = supportPhone,
+                        onValueChange = { supportPhone = it },
+                        label = { Text("Support Phone") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
+                    )
+                }
+            }
+
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(18.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Text(
+                        text = "Platform Controls",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+
+                    AdminSettingSwitch(
+                        title = "Customer Registration",
+                        checked = customerRegistration,
+                        onCheckedChange = { customerRegistration = it }
+                    )
+
+                    AdminSettingSwitch(
+                        title = "Provider Registration",
+                        checked = providerRegistration,
+                        onCheckedChange = { providerRegistration = it }
+                    )
+
+                    AdminSettingSwitch(
+                        title = "Bookings Enabled",
+                        checked = bookingEnabled,
+                        onCheckedChange = { bookingEnabled = it }
+                    )
+
+                    AdminSettingSwitch(
+                        title = "Maintenance Mode",
+                        checked = maintenanceMode,
+                        onCheckedChange = { maintenanceMode = it }
+                    )
+                }
+            }
+
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(18.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Text(
+                        text = "Commission Settings",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+
+                    OutlinedTextField(
+                        value = commission,
+                        onValueChange = { commission = it },
+                        label = { Text("Platform Commission (%)") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
+                    )
+
+                    Text(
+                        text = "Allowed range: 0% to 100%",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
+            if (errorMessage.isNotBlank()) {
+                Text(
+                    text = errorMessage,
+                    color = MaterialTheme.colorScheme.error
+                )
+            }
+
+            if (successMessage.isNotBlank()) {
+                Text(
+                    text = successMessage,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+
+            Button(
+                onClick = { scope.launch { saveSettings() } },
+                enabled = !isSaving,
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(14.dp)
+            ) {
+                if (isSaving) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.width(20.dp),
+                        strokeWidth = 2.dp
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                }
+
+                Text(if (isSaving) "Saving..." else "Save Settings")
+            }
+        }
+    }
+}
+
+@Composable
+private fun AdminSettingSwitch(
+    title: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = title,
+            modifier = Modifier.weight(1f),
+            style = MaterialTheme.typography.bodyMedium
+        )
+
+        Switch(
+            checked = checked,
+            onCheckedChange = onCheckedChange
+        )
     }
 }

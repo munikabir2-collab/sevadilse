@@ -40,6 +40,7 @@ class ProviderOut(BaseModel):
     description: str | None
     specialization: str | None
     city: str
+    phone: str | None = None
     address: str | None = None
     latitude: float | None = None
     longitude: float | None = None

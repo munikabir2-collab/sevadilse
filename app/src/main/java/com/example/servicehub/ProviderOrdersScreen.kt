@@ -1,6 +1,7 @@
 
 package com.example.servicehub
 
+import org.json.JSONObject
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -159,8 +160,19 @@ fun ProviderOrdersScreen(
             if (response.isSuccessful) {
                 orders = parseProviderOrders(response.body())
             } else {
-                message = "Orders load failed: HTTP ${response.code()}"
-            }
+    val errorText = response.errorBody()?.string()
+
+    val backendDetail = try {
+        JSONObject(errorText ?: "{}")
+            .optString("detail")
+            .takeIf { it.isNotBlank() }
+    } catch (e: Exception) {
+        null
+    }
+
+    message = backendDetail
+        ?: "Orders load failed: HTTP ${response.code()}"
+}
 
         } catch (e: Exception) {
             message = "Network error: ${e.message ?: "Please try again"}"

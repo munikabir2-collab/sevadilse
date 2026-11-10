@@ -1,3 +1,4 @@
+
 import enum
 from sqlalchemy import (
     Column,
@@ -66,6 +67,19 @@ class Provider(Base):
         nullable=True,
     )
 
+    # Provider owner relationship
+    owner = relationship(
+        "User",
+        foreign_keys=[owner_id],
+        lazy="joined",
+    )
+
+    # Provider contact phone from users table
+    @property
+    def phone(self):
+        return self.owner.phone if self.owner else None
+
+    # Provider services
     services = relationship(
         "Service",
         back_populates="provider",

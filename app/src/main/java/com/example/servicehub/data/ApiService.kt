@@ -473,8 +473,7 @@ interface ApiService {
         @Path("provider_id") providerId: Int,
         @Body request: JsonObject
     ): Response<JsonElement>
-
-       // =========================
+    // =========================
     // ADMIN
     // =========================
 
@@ -490,4 +489,19 @@ interface ApiService {
         @Query("limit") limit: Int = 30,
         @Query("offset") offset: Int = 0
     ): Response<JsonElement>
+
+    // =========================
+    // ADMIN SETTINGS
+    // =========================
+
+    @GET("admin/settings")
+    suspend fun getAdminSettings(
+        @Header("Authorization") authorization: String
+    ): Response<JsonObject>
+
+    @PATCH("admin/settings")
+    suspend fun updateAdminSettings(
+        @Header("Authorization") authorization: String,
+        @Body request: JsonObject
+    ): Response<JsonObject>
 }
